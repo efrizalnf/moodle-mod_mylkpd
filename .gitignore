@@ -7,3 +7,5 @@ Thumbs.db
 # Build / packaging output
 *.zip
 node_modules/
+*.patch
+*.bundle

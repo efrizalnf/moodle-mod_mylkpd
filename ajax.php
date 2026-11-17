@@ -5,6 +5,7 @@
  * Autosave and live sync for the worksheet editor.
  *
  * @package    mod_mylkpd
+ * @copyright  2026 Zalira
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 

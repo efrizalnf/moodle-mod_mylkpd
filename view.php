@@ -5,6 +5,7 @@
  * Main page: students (alone or as a group) work on the worksheet, teachers preview it.
  *
  * @package    mod_mylkpd
+ * @copyright  2026 Zalira
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 

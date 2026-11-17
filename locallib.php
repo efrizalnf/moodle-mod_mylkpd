@@ -5,6 +5,7 @@
  * Internal helpers for mod_mylkpd.
  *
  * @package    mod_mylkpd
+ * @copyright  2026 Zalira
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
@@ -747,6 +748,82 @@ function mylkpd_grading_manage_url(context_module $context): moodle_url {
 }
 
 /**
+ * Whether AI essay checking can be used in this activity (site switch + activity switch).
+ *
+ * @param stdClass $mylkpd
+ * @return bool
+ */
+function mylkpd_ai_enabled(stdClass $mylkpd): bool {
+    return !empty($mylkpd->aienabled) && \mod_mylkpd\ai\client::site_enabled();
+}
+
+/**
+ * Validates an answer area sent from the answer-key editor.
+ *
+ * Format: {"blocks": ["12", ...], "original": {"12": "text before the student wrote"},
+ *          "regions": [{"page": 1, "x": 10, "y": 40, "w": 80, "h": 15}]} (percent of the page).
+ *
+ * @param mixed $raw JSON string or array
+ * @return array
+ */
+function mylkpd_clean_anchor($raw): array {
+    $a = is_array($raw) ? $raw : json_decode((string) $raw, true);
+    $out = ['blocks' => [], 'original' => [], 'regions' => []];
+    if (!is_array($a)) {
+        return $out;
+    }
+    foreach (array_slice((array) ($a['blocks'] ?? []), 0, 60) as $id) {
+        $id = (string) $id;
+        if (ctype_digit($id) && (int) $id < 100000 && !in_array($id, $out['blocks'], true)) {
+            $out['blocks'][] = $id;
+            $orig = $a['original'][$id] ?? '';
+            $out['original'][$id] = core_text::substr(clean_param(is_scalar($orig) ? (string) $orig : '', PARAM_TEXT), 0, 2000);
+        }
+    }
+    $pct = function($v): float {
+        return min(100, max(0, round(is_numeric($v) ? (float) $v : 0, 2)));
+    };
+    foreach (array_slice((array) ($a['regions'] ?? []), 0, 8) as $r) {
+        if (!is_array($r)) {
+            continue;
+        }
+        $region = ['page' => max(1, min(1000, (int) ($r['page'] ?? 1))), 'x' => $pct($r['x'] ?? 0),
+            'y' => $pct($r['y'] ?? 0), 'w' => $pct($r['w'] ?? 0), 'h' => $pct($r['h'] ?? 0)];
+        if ($region['w'] >= 1 && $region['h'] >= 1) {
+            $out['regions'][] = $region;
+        }
+    }
+    return $out;
+}
+
+/**
+ * Essay questions with answer keys, in order, each with its decoded answer area in ->area.
+ *
+ * @param stdClass $mylkpd
+ * @return array
+ */
+function mylkpd_get_questions(stdClass $mylkpd): array {
+    global $DB;
+    $questions = $DB->get_records('mylkpd_questions', ['mylkpdid' => $mylkpd->id], 'sortorder, id');
+    foreach ($questions as $q) {
+        $q->area = mylkpd_clean_anchor($q->anchor);
+    }
+    return $questions;
+}
+
+/**
+ * The "made by Zalira" credit shown under the worksheet.
+ *
+ * @return string HTML
+ */
+function mylkpd_credit(): string {
+    $info = core_plugin_manager::instance()->get_plugin_info('mod_mylkpd');
+    $release = ($info && !empty($info->release)) ? $info->release : '';
+    return html_writer::div(get_string('credit', 'mod_mylkpd', $release), 'mylkpd-credit',
+        ['data-mylkpd-credit' => 'zalira']);
+}
+
+/**
  * Formats a grade for display.
  *
  * @param stdClass $mylkpd
@@ -925,7 +1002,7 @@ function mylkpd_status_badge(?stdClass $sub): string {
  * @return array ['html' => string, 'ready' => bool]
  */
 function mylkpd_render_worksheet(stdClass $mylkpd, $cm, context_module $context, ?stdClass $submission,
-        bool $readonly, array $memberids = [], ?array $teacherfor = null): array {
+        bool $readonly, array $memberids = [], ?array $teacherfor = null, array $extracfg = []): array {
     global $PAGE, $OUTPUT, $USER;
 
     $doc = mylkpd_get_document($mylkpd, $context);
@@ -1024,6 +1101,7 @@ function mylkpd_render_worksheet(stdClass $mylkpd, $cm, context_module $context,
         ],
     ];
 
+    $config = $extracfg + $config;
     $PAGE->requires->js(new moodle_url('/mod/mylkpd/js/worksheet.js'));
     $PAGE->requires->js_init_code('MyLKPD.init(' . json_encode($config) . ');', true);
 
@@ -1045,6 +1123,7 @@ function mylkpd_render_worksheet(stdClass $mylkpd, $cm, context_module $context,
     }
     $classes = 'mylkpd-container' . ($cantype ? ' mylkpd-work-edit' : '') . ' mylkpd-mode-' . ($readonly ? 'view' : $defaulttool);
     $html .= html_writer::div('', $classes, ['id' => 'mylkpd-container']);
+    $html .= mylkpd_credit();
 
     return ['html' => $html, 'ready' => true];
 }

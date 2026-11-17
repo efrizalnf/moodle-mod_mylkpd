@@ -16,6 +16,7 @@ use core_privacy\local\request\writer;
  * Privacy API implementation for mod_mylkpd.
  *
  * @package    mod_mylkpd
+ * @copyright  2026 Zalira
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class provider implements
@@ -36,7 +37,11 @@ class provider implements
             'grade' => 'privacy:metadata:mylkpd_submissions:grade',
             'feedback' => 'privacy:metadata:mylkpd_submissions:feedback',
             'timemodified' => 'privacy:metadata:mylkpd_submissions:timemodified',
+            'airesult' => 'privacy:metadata:mylkpd_submissions:airesult',
         ], 'privacy:metadata:mylkpd_submissions');
+        $collection->add_external_location_link('ai_provider', [
+            'answers' => 'privacy:metadata:ai_provider:answers',
+        ], 'privacy:metadata:ai_provider');
         $collection->add_database_table('mylkpd_presence', [
             'userid' => 'privacy:metadata:mylkpd_presence:userid',
             'block' => 'privacy:metadata:mylkpd_presence:block',
@@ -121,6 +126,7 @@ class provider implements
                 $data->answers = json_decode($sub->answers ?? '[]');
                 $data->grade = $sub->grade;
                 $data->feedback = $sub->feedback;
+                $data->aicheck = $sub->airesult ? json_decode($sub->airesult) : null;
                 $data->timemodified = transform::datetime($sub->timemodified);
                 $path = [get_string('submissions', 'mod_mylkpd'), $sub->id];
                 writer::with_context($context)->export_data($path, $data);

@@ -5,6 +5,7 @@
  * Activity settings form.
  *
  * @package    mod_mylkpd
+ * @copyright  2026 Zalira
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
@@ -54,6 +55,15 @@ class mod_mylkpd_mod_form extends moodleform_mod {
         ]);
         $mform->setDefault('allowresubmit', 1);
         $mform->addHelpButton('allowresubmit', 'allowresubmit', 'mod_mylkpd');
+
+        // AI essay checking (only offered when the administrator switched it on in the plugin settings).
+        if (\mod_mylkpd\ai\client::site_enabled()) {
+            $mform->addElement('advcheckbox', 'aienabled', get_string('aienabled', 'mod_mylkpd'));
+            $mform->addHelpButton('aienabled', 'aienabled', 'mod_mylkpd');
+        } else {
+            $mform->addElement('static', 'aidisabledinfo', get_string('aienabled', 'mod_mylkpd'),
+                get_string('aisiteoff', 'mod_mylkpd'));
+        }
 
         // Changing these after students started would make existing answers unusable.
         if ($this->has_submissions()) {

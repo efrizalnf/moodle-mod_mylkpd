@@ -5,6 +5,7 @@
  * Teacher views one filled worksheet (a student's or a group's) and grades it.
  *
  * @package    mod_mylkpd
+ * @copyright  2026 Zalira
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
@@ -164,6 +165,49 @@ if ($worksheet['ready']) {
         ['type' => 'button', 'class' => 'btn btn-secondary', 'data-mylkpd-action' => 'save']);
     echo html_writer::end_div();
 }
+// AI essay checking: suggestion only, the teacher decides what goes into the grade form.
+if (mylkpd_ai_enabled($mylkpd)) {
+    $aiquestions = mylkpd_get_questions($mylkpd);
+    echo $OUTPUT->box_start('generalbox mylkpd-aibox', 'mylkpd-ai');
+    echo $OUTPUT->heading('&#10024; ' . get_string('aicheck', 'mod_mylkpd'), 4);
+    $keysurl = new moodle_url('/mod/mylkpd/keys.php', ['id' => $cm->id]);
+    if (!$aiquestions) {
+        echo html_writer::div(get_string('noanswerkeys', 'mod_mylkpd') . ' ' .
+            html_writer::link($keysurl, get_string('answerkeys', 'mod_mylkpd'), ['class' => 'btn btn-sm btn-outline-primary']),
+            'small');
+    } else {
+        echo html_writer::div(
+            html_writer::tag('button', '&#10024; ' . get_string('aicheckbutton', 'mod_mylkpd'),
+                ['type' => 'button', 'class' => 'btn btn-secondary', 'data-mylkpd-ai' => 'check']) . ' ' .
+            html_writer::span(get_string('aicheckinfo', 'mod_mylkpd', count($aiquestions)), 'small text-muted') . ' ' .
+            html_writer::link($keysurl, get_string('answerkeys', 'mod_mylkpd'), ['class' => 'small']),
+            'mylkpd-ai-tools');
+        echo html_writer::div('', 'mylkpd-ai-result', ['id' => 'mylkpd-ai-result', 'aria-live' => 'polite']);
+        $stored = ($submission && !empty($submission->airesult)) ? json_decode($submission->airesult, true) : null;
+        if ($stored) {
+            $stored['timetext'] = userdate($stored['time'] ?? 0);
+        }
+        $aistrings = [];
+        foreach (['colnumber', 'colanswer', 'colscore', 'colfeedback', 'total', 'checkedat', 'apply', 'review', 'checking',
+                'failed', 'missing', 'empty', 'number', 'replacefeedback'] as $k) {
+            $aistrings[$k] = get_string('ai' . $k, 'mod_mylkpd');
+        }
+        $PAGE->requires->js(new moodle_url('/mod/mylkpd/js/aicheck.js'));
+        $PAGE->requires->js_init_code('MyLKPDAI.init(' . json_encode([
+            'url' => (new moodle_url('/mod/mylkpd/aicheck.php'))->out(false),
+            'cmid' => (int) $cm->id,
+            'sesskey' => sesskey(),
+            'target' => ['targetuser' => $teacherfor['userid'], 'targetgroup' => $teacherfor['groupid']],
+            'grade' => (float) $mylkpd->grade,
+            'hasRubric' => (bool) $controller,
+            'decsep' => get_string('decsep', 'langconfig'),
+            'result' => $stored,
+            'strings' => $aistrings,
+        ]) . ');', true);
+    }
+    echo $OUTPUT->box_end();
+}
+
 echo $OUTPUT->box_start('generalbox mylkpd-gradebox');
 echo $OUTPUT->heading(get_string('grading', 'mod_mylkpd'), 4);
 if ($rubricwarning) {

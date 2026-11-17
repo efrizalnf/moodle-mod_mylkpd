@@ -5,6 +5,7 @@
  * Core API callbacks for mod_mylkpd.
  *
  * @package    mod_mylkpd
+ * @copyright  2026 Zalira
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
@@ -143,6 +144,7 @@ function mylkpd_delete_instance($id) {
     $DB->delete_records_select('mylkpd_presence',
         'submissionid IN (SELECT id FROM {mylkpd_submissions} WHERE mylkpdid = ?)', [$mylkpd->id]);
     $DB->delete_records('mylkpd_submissions', ['mylkpdid' => $mylkpd->id]);
+    $DB->delete_records('mylkpd_questions', ['mylkpdid' => $mylkpd->id]);
     $DB->delete_records('mylkpd', ['id' => $mylkpd->id]);
     mylkpd_grade_item_delete($mylkpd);
     return true;

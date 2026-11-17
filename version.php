@@ -10,13 +10,14 @@
  * Version info for mod_mylkpd (MyLKPD).
  *
  * @package    mod_mylkpd
+ * @copyright  2026 Zalira
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
 defined('MOODLE_INTERNAL') || die();
 
 $plugin->component = 'mod_mylkpd';
-$plugin->version   = 2026111701;
+$plugin->version   = 2026111800;
 $plugin->requires  = 2022112800; // Moodle 4.1 atau lebih baru.
 $plugin->maturity  = MATURITY_BETA;
-$plugin->release   = '1.2.1';
+$plugin->release   = '1.3.0';

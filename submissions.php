@@ -5,6 +5,7 @@
  * Teacher overview of all submissions (per student or per group).
  *
  * @package    mod_mylkpd
+ * @copyright  2026 Zalira
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
@@ -26,6 +27,15 @@ $PAGE->navbar->add(get_string('submissions', 'mod_mylkpd'));
 
 echo $OUTPUT->header();
 echo $OUTPUT->heading(get_string('submissions', 'mod_mylkpd'), 3);
+
+if (mylkpd_ai_enabled($mylkpd)) {
+    $count = $DB->count_records('mylkpd_questions', ['mylkpdid' => $mylkpd->id]);
+    echo html_writer::div(
+        html_writer::span('&#10024; ' . get_string($count ? 'aikeysready' : 'noanswerkeys', 'mod_mylkpd', $count), 'small text-muted') . ' ' .
+        html_writer::link(new moodle_url('/mod/mylkpd/keys.php', ['id' => $cm->id]), get_string('answerkeys', 'mod_mylkpd'),
+            ['class' => 'btn btn-sm btn-outline-primary']),
+        'mylkpd-rubricbar mb-2');
+}
 
 if ($mylkpd->grade != 0 && has_capability('moodle/grade:managegradingforms', $context)) {
     $haverubric = (bool) mylkpd_grading_controller($mylkpd, $context);

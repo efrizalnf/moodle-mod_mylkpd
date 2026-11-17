@@ -1,6 +1,6 @@
 # MyLKPD (mod_mylkpd) — LKPD Interaktif untuk Moodle
 
-Versi 1.2.1 (beta) · Moodle 4.1+
+Versi 1.3.0 (beta) · Moodle 4.1+ · dibuat oleh **Zalira**
 
 Plugin aktivitas Moodle (4.1+). Guru cukup mengunggah LKPD (PDF atau Word), siswa mengerjakan
 langsung di atas halaman LKPD, lalu guru menilai dari Moodle. Nilai otomatis masuk Gradebook.
@@ -50,6 +50,30 @@ Di halaman penilaian, guru bisa langsung bekerja di LKPD siswa (atau kelompok):
   dan tidak mengubah "terakhir diubah" milik siswa. Saat tombol simpan nilai ditekan, anotasi
   yang belum terkirim disimpan dulu.
 - Siswa melihat anotasi guru langsung (tanpa memuat ulang) jika sedang membuka LKPD.
+
+## Pemeriksaan esai dengan AI (Claude / OpenAI)
+Opsional, bisa diaktifkan/nonaktifkan di **Administrasi situs > Plugin > Modul aktivitas > MyLKPD**:
+penyedia (Claude atau OpenAI/kompatibel OpenAI), API key, model, dan URL dasar API (untuk proxy/router).
+Lalu aktifkan per aktivitas di pengaturan aktivitas ("Pemeriksaan esai dengan AI").
+
+**Pola penyelarasan soal ↔ kunci jawaban (best practice yang dipakai):**
+1. Guru membuka **Kunci jawaban** (tombol di halaman Jawaban siswa). Untuk setiap soal esai diisi:
+   nomor, soal, kunci jawaban (jawaban ideal), poin penilaian (satu per baris), dan skor maksimum.
+   **Deteksi soal** mengisi otomatis dari soal bernomor (1. 2. 3. …) pada LKPD Word.
+2. Setiap soal **dihubungkan ke area jawabannya** di LKPD: klik paragraf/sel tabel tempat siswa
+   mengetik (mode Edit teks), dan/atau seret kotak di halaman untuk jawaban yang ditulis di atas
+   halaman (mode Anotasi/PDF). Deteksi soal sudah menyarankan areanya (paragraf/sel sampai soal berikutnya).
+3. Saat diperiksa, jawaban siswa untuk tiap soal diambil **persis dari area tersebut**, jadi tidak ada
+   tebakan teks mana milik soal mana. Teks asli area (mis. "Jawab: ....") ikut dikirim agar AI hanya
+   menilai tambahan siswa.
+4. AI menerima soal, kunci, poin penilaian, skor maksimum, dan jawaban dalam JSON, lalu wajib membalas
+   JSON (skor, poin terpenuhi/kurang, umpan balik singkat). Skor dibatasi ke skor maksimum di server,
+   jawaban siswa diperlakukan sebagai data (instruksi di dalam jawaban diabaikan).
+5. Di halaman penilaian, **Periksa dengan AI** menampilkan saran skor dan umpan balik per soal.
+   **Pakai sebagai nilai dan umpan balik** mengisi form nilai (diskalakan ke nilai maksimum aktivitas);
+   guru tetap memeriksa sebelum menyimpan. Dengan rubrik, hanya umpan balik yang diisi.
+
+Data yang dikirim ke penyedia AI tercatat di Privacy API (lokasi eksternal).
 
 ## Penilaian dengan rubrik
 MyLKPD mendukung *Advanced grading* Moodle (rubrik dan panduan penilaian), sama seperti Assignment.
@@ -108,7 +132,8 @@ Posisi gambar disimpan dalam persen halaman, jadi tetap pas di HP maupun laptop.
 
 ## Struktur
 - version.php, lib.php, locallib.php, mod_form.php
-- view.php (siswa), ajax.php (autosave/sinkron), upload.php (unggah gambar), submissions.php (daftar), grade.php (penilaian), index.php
+- view.php (siswa), ajax.php (autosave/sinkron), upload.php (unggah gambar), keys.php (kunci jawaban),
+  aicheck.php (pemeriksaan AI), settings.php (pengaturan plugin), classes/ai (klien & pemeriksa AI), submissions.php (daftar), grade.php (penilaian), index.php
 - db/install.xml, db/upgrade.php, db/access.php
 - classes/event, classes/form, classes/privacy
 - js/worksheet.js (editor), styles.css
@@ -118,3 +143,7 @@ Posisi gambar disimpan dalam persen halaman, jadi tetap pas di HP maupun laptop.
 ## Belum ada
 Backup/restore kursus, kunci jawaban otomatis, coretan koreksi dari guru, riwayat versi.
 Sinkronisasi memakai polling (bukan WebSocket): cocok untuk kelompok kecil (2–8 siswa).
+
+## Pembuat
+MyLKPD dikembangkan oleh **Zalira**. Keterangan "MyLKPD · dibuat oleh Zalira" tampil di bawah LKPD dan di
+halaman pengaturan plugin.

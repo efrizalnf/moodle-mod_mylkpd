@@ -9,6 +9,7 @@
  * who is online, and locks a paragraph while a group mate is typing in it.
  *
  * @package    mod_mylkpd
+ * @copyright  2026 Zalira
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 var MyLKPD = (function() {
@@ -2191,6 +2192,174 @@ var MyLKPD = (function() {
             fileInput.click();
         }
 
+        // ------------------------------------------------ Answer areas (answer key editor for AI checking).
+
+        var anchorMarks = [];
+
+        function pageOfElement(el) {
+            var section = el.closest ? el.closest('section.docx') : null;
+            var num = null;
+            Object.keys(pages).forEach(function(n) {
+                if (section && pages[n].layer.parentNode === section) {
+                    num = parseInt(n, 10);
+                }
+            });
+            return num;
+        }
+
+        function relRect(el, num) {
+            var lr = pages[num].layer.getBoundingClientRect();
+            var r = el.getBoundingClientRect();
+            return {top: (r.top - lr.top) / lr.height * 100, bottom: (r.bottom - lr.top) / lr.height * 100};
+        }
+
+        /**
+         * Highlights the answer area of every question (paragraphs and boxes), labelled with its number.
+         *
+         * @param {Array} list [{label, area: {blocks, regions}, active}]
+         */
+        function showAnchors(list) {
+            anchorMarks.forEach(function(el) {
+                if (el.classList.contains('mylkpd-anchor-rect')) {
+                    el.parentNode.removeChild(el);
+                } else {
+                    el.classList.remove('mylkpd-anchor-block', 'mylkpd-anchor-active');
+                    el.removeAttribute('data-mylkpd-anchor');
+                }
+            });
+            anchorMarks = [];
+            (list || []).forEach(function(q) {
+                var area = q.area || {};
+                (area.blocks || []).forEach(function(id) {
+                    var el = blockEls[id];
+                    if (el) {
+                        el.classList.add('mylkpd-anchor-block');
+                        el.classList.toggle('mylkpd-anchor-active', !!q.active);
+                        el.setAttribute('data-mylkpd-anchor', q.label);
+                        anchorMarks.push(el);
+                    }
+                });
+                (area.regions || []).forEach(function(r) {
+                    var page = pages[r.page];
+                    if (!page) {
+                        return;
+                    }
+                    var box = document.createElement('div');
+                    box.className = 'mylkpd-anchor-rect' + (q.active ? ' mylkpd-anchor-active' : '');
+                    box.style.left = r.x + '%';
+                    box.style.top = r.y + '%';
+                    box.style.width = r.w + '%';
+                    box.style.height = r.h + '%';
+                    box.setAttribute('data-mylkpd-anchor', q.label);
+                    page.html.appendChild(box);
+                    anchorMarks.push(box);
+                });
+            });
+        }
+
+        /**
+         * Finds numbered questions ("1. ...", "2) ...") in the Word worksheet and suggests their answer area:
+         * the paragraphs/cells up to the next question, and the same stretch of the page as a box.
+         *
+         * @return {Array} [{label, question, blocks, original, region}]
+         */
+        function detectQuestions() {
+            var ids = Object.keys(blockEls).sort(function(a, b) {
+                return a - b;
+            });
+            var found = [];
+            ids.forEach(function(id) {
+                var el = blockEls[id];
+                var m = /^\s*(\d{1,2})\s*[.)]\s+(\S[\s\S]{3,})$/.exec(el.textContent.replace(/\s+/g, ' '));
+                if (m && !el.closest('td, th')) {
+                    found.push({label: m[1], question: m[2].trim(), id: id});
+                }
+            });
+            return found.map(function(q, i) {
+                var next = found[i + 1];
+                var start = ids.indexOf(q.id);
+                var end = next ? ids.indexOf(next.id) : Math.min(ids.length, start + 11);
+                var blocks = ids.slice(start + 1, end).slice(0, 10);
+                var original = {};
+                blocks.forEach(function(id) {
+                    original[id] = blockEls[id].textContent;
+                });
+                var region = null;
+                var num = pageOfElement(blockEls[q.id]);
+                if (num) {
+                    var top = relRect(blockEls[q.id], num).bottom;
+                    var bottom = (next && pageOfElement(blockEls[next.id]) === num) ? relRect(blockEls[next.id], num).top : Math.min(98, top + 18);
+                    if (bottom - top >= 2) {
+                        region = {page: num, x: 5, y: clamp(top), w: 90, h: clamp(bottom - top)};
+                    }
+                }
+                return {label: q.label, question: q.question, blocks: blocks, original: original, region: region};
+            });
+        }
+
+        function emit(name, detail) {
+            document.dispatchEvent(new CustomEvent('mylkpd:' + name, {detail: detail}));
+        }
+
+        /**
+         * Click a paragraph/cell to add it to the active question's area, or drag to draw a box on the page.
+         */
+        function bindAnchorEditor() {
+            container.classList.add('mylkpd-anchoring');
+            Object.keys(pages).forEach(function(n) {
+                var num = parseInt(n, 10);
+                var layer = pages[n].layer;
+                var start = null;
+                var draft = null;
+                layer.addEventListener('pointerdown', function(e) {
+                    if (e.button !== 0) {
+                        return;
+                    }
+                    e.preventDefault();
+                    start = {p: pointFrom(layer, e), cx: e.clientX, cy: e.clientY};
+                    layer.setPointerCapture(e.pointerId);
+                });
+                layer.addEventListener('pointermove', function(e) {
+                    if (!start || (Math.abs(e.clientX - start.cx) + Math.abs(e.clientY - start.cy) < 6 && !draft)) {
+                        return;
+                    }
+                    var p = pointFrom(layer, e);
+                    if (!draft) {
+                        draft = document.createElement('div');
+                        draft.className = 'mylkpd-anchor-rect mylkpd-anchor-draft';
+                        pages[n].html.appendChild(draft);
+                    }
+                    draft.style.left = Math.min(p.x, start.p.x) + '%';
+                    draft.style.top = Math.min(p.y, start.p.y) + '%';
+                    draft.style.width = Math.abs(p.x - start.p.x) + '%';
+                    draft.style.height = Math.abs(p.y - start.p.y) + '%';
+                });
+                layer.addEventListener('pointerup', function(e) {
+                    if (!start) {
+                        return;
+                    }
+                    var p = pointFrom(layer, e);
+                    if (draft) {
+                        draft.parentNode.removeChild(draft);
+                        draft = null;
+                        emit('anchorrect', {page: num, x: Math.min(p.x, start.p.x), y: Math.min(p.y, start.p.y),
+                            w: clamp(Math.abs(p.x - start.p.x)), h: clamp(Math.abs(p.y - start.p.y))});
+                    } else {
+                        // A click: find the paragraph or table cell under the pointer.
+                        var under = document.elementsFromPoint(e.clientX, e.clientY);
+                        for (var i = 0; i < under.length; i++) {
+                            var block = under[i].closest && under[i].closest('[data-mylkpd-block]');
+                            if (block) {
+                                emit('anchorblock', {id: block.getAttribute('data-mylkpd-block'), text: block.textContent});
+                                break;
+                            }
+                        }
+                    }
+                    start = null;
+                });
+            });
+        }
+
         // ------------------------------------------------ Toolbar and buttons.
 
         function setTool(t) {
@@ -2465,6 +2634,12 @@ var MyLKPD = (function() {
             return cfg.mode === 'docx' ? renderDocx() : renderPdf(width0);
         }).then(function() {
             rebuild();
+            if (cfg.anchorEditor) {
+                bindAnchorEditor();
+            }
+            MyLKPD.current = {showAnchors: showAnchors, detectQuestions: detectQuestions, canType: canType,
+                workmode: cfg.workmode};
+            emit('ready', MyLKPD.current);
             if (cfg.collab) {
                 flush(); // Announce presence and fetch anything newer than the page.
             }

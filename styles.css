@@ -877,3 +877,175 @@
         border-radius: 50%;
     }
 }
+
+/* Word pictures "behind text" (page backgrounds, banners): on the page, under the text. */
+.path-mod-mylkpd .mylkpd-docx section.docx > article,
+.path-mod-mylkpd .mylkpd-docx section.docx > header,
+.path-mod-mylkpd .mylkpd-docx section.docx > footer {
+    position: relative;
+    z-index: 1;
+}
+
+.path-mod-mylkpd .mylkpd-docx .mylkpd-docx-bg {
+    z-index: 0;
+    pointer-events: none;
+    user-select: none;
+}
+
+.path-mod-mylkpd .mylkpd-docx .mylkpd-docx-float {
+    z-index: 2;
+    pointer-events: none;
+}
+
+/* Teacher's sticky notes */
+.path-mod-mylkpd .mylkpd-note {
+    position: absolute;
+    z-index: 3;
+    transform: translate(-50%, -50%);
+}
+
+.path-mod-mylkpd .mylkpd-note-pin {
+    display: block;
+    width: 2.1em;
+    height: 2.1em;
+    padding: 0;
+    font-size: max(14px, 1.6cqw);
+    line-height: 2.1em;
+    text-align: center;
+    background: #fff8e1;
+    border: 2px solid var(--mylkpd-note, #c62828);
+    border-radius: 50% 50% 50% 0;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, .25);
+    cursor: pointer;
+}
+
+.path-mod-mylkpd .mylkpd-note-bubble {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    display: none;
+    width: min(320px, 60cqw);
+    padding: .5rem .6rem;
+    font-size: max(13px, 1.4cqw);
+    line-height: 1.4;
+    color: #3e2723;
+    white-space: pre-wrap;
+    background: #fff8e1;
+    border: 1px solid #ffcc80;
+    border-left: 4px solid var(--mylkpd-note, #c62828);
+    border-radius: .35rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, .18);
+}
+
+.path-mod-mylkpd .mylkpd-note.mylkpd-open .mylkpd-note-bubble {
+    display: block;
+}
+
+.path-mod-mylkpd .mylkpd-note-left .mylkpd-note-bubble {
+    right: 0;
+    left: auto;
+    border-right: 4px solid var(--mylkpd-note, #c62828);
+    border-left: 1px solid #ffcc80;
+}
+
+.path-mod-mylkpd .mylkpd-note-up .mylkpd-note-bubble {
+    top: auto;
+    bottom: calc(100% + 6px);
+}
+
+.path-mod-mylkpd .mylkpd-note-bubble textarea {
+    display: block;
+    width: 100%;
+    min-height: 4.5em;
+    padding: .25rem;
+    font: inherit;
+    color: inherit;
+    background: transparent;
+    border: 0;
+    outline: 0;
+    resize: vertical;
+}
+
+.path-mod-mylkpd .mylkpd-namelabel-note {
+    transform: translate(1.4em, calc(-100% - 1.2em));
+}
+
+/* Grading page */
+.path-mod-mylkpd .mylkpd-teacherhint {
+    max-width: 1000px;
+    margin: 0 auto .5rem;
+}
+
+.path-mod-mylkpd .mylkpd-teacheractions {
+    margin-bottom: 1rem;
+    border-radius: .5rem;
+}
+
+/* Long words and web addresses wrap inside table cells and paragraphs instead of widening the table
+   past the page edge (where the page cuts them off). */
+.path-mod-mylkpd .mylkpd-docx section.docx > article td,
+.path-mod-mylkpd .mylkpd-docx section.docx > article th,
+.path-mod-mylkpd .mylkpd-docx section.docx > article td *,
+.path-mod-mylkpd .mylkpd-docx section.docx > article th *,
+.path-mod-mylkpd .mylkpd-docx section.docx > article p,
+.path-mod-mylkpd .mylkpd-docx section.docx > article p span,
+.path-mod-mylkpd .mylkpd-docx section.docx > article p a {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.path-mod-mylkpd .mylkpd-docx section.docx > article table {
+    max-width: 100%;
+}
+
+.path-mod-mylkpd .mylkpd-docx section.docx > article a[href] {
+    color: #0f6cbf;
+    text-decoration: underline;
+}
+
+/* "Open link" bubble for links inside paragraphs being edited */
+.mylkpd-linkpop {
+    position: fixed;
+    z-index: 1070;
+    display: none;
+    max-width: min(480px, calc(100vw - 16px));
+    padding: .3rem .55rem;
+    font-size: .85rem;
+    background: #fff;
+    border: 1px solid #ced4da;
+    border-radius: .4rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, .18);
+}
+
+.mylkpd-linkpop-open {
+    display: block;
+    overflow: hidden;
+    color: #0f6cbf;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+/* Web addresses typed in a text box, shown as links under it */
+.path-mod-mylkpd .mylkpd-textlinks {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    margin-top: 2px;
+}
+
+.path-mod-mylkpd .mylkpd-textlinks:empty {
+    display: none;
+}
+
+.path-mod-mylkpd .mylkpd-textlinks a {
+    max-width: 90cqw;
+    overflow: hidden;
+    padding: 0 .3em;
+    font-size: max(11px, 1.2cqw);
+    color: #0f6cbf;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    background: rgba(255, 255, 255, .9);
+    border-radius: 2px;
+    pointer-events: auto;
+}

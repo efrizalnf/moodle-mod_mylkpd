@@ -174,6 +174,14 @@ function mylkpd_clean_item($a): ?array {
             }
             $item += ['x' => $pct($a['x'] ?? 0), 'y' => $pct($a['y'] ?? 0), 'tex' => $tex];
             break;
+        case 'note':
+            // Teacher's sticky note on the page (only teachers may create them, see mylkpd_sync()).
+            $text = trim(core_text::substr(clean_param((string) ($a['text'] ?? ''), PARAM_TEXT), 0, 2000));
+            if ($text === '') {
+                return null;
+            }
+            $item += ['x' => $pct($a['x'] ?? 0), 'y' => $pct($a['y'] ?? 0), 'text' => $text];
+            break;
         case 'image':
             // A picture the student uploaded; the file lives in the submission's answerimage area.
             $file = clean_param((string) ($a['file'] ?? ''), PARAM_FILE);
@@ -325,6 +333,62 @@ function mylkpd_find_submission(stdClass $mylkpd, $cm, int $userid, bool $create
 }
 
 /**
+ * Which submission a teacher is working on from the grading page.
+ *
+ * @param stdClass $mylkpd
+ * @param int $targetuser student (individual work)
+ * @param int $targetgroup group (group work)
+ * @return array ['userid' => int, 'groupid' => int]
+ */
+function mylkpd_teacher_target(stdClass $mylkpd, int $targetuser, int $targetgroup): array {
+    if (!empty($mylkpd->teamsubmission)) {
+        if ($targetgroup <= 0) {
+            throw new moodle_exception('invalidgroupid');
+        }
+        return ['userid' => 0, 'groupid' => $targetgroup];
+    }
+    if ($targetuser <= 0) {
+        throw new moodle_exception('invaliduser');
+    }
+    return ['userid' => $targetuser, 'groupid' => 0];
+}
+
+/**
+ * The submission being edited: the user's own (or their group's), or the one a teacher grades.
+ *
+ * @param stdClass $mylkpd
+ * @param cm_info|stdClass $cm
+ * @param int $userid
+ * @param array|null $teacherfor from mylkpd_teacher_target(), null for students
+ * @param bool $create
+ * @return stdClass|null
+ */
+function mylkpd_target_submission(stdClass $mylkpd, $cm, int $userid, ?array $teacherfor, bool $create): ?stdClass {
+    global $DB;
+    if (!$teacherfor) {
+        return mylkpd_find_submission($mylkpd, $cm, $userid, $create);
+    }
+    $params = !empty($mylkpd->teamsubmission)
+        ? ['mylkpdid' => $mylkpd->id, 'groupid' => $teacherfor['groupid']]
+        : ['mylkpdid' => $mylkpd->id, 'userid' => $teacherfor['userid'], 'groupid' => 0];
+    $sub = $DB->get_record('mylkpd_submissions', $params);
+    if (!$sub && $create) {
+        $now = time();
+        $sub = (object) ($params + [
+            'userid' => $teacherfor['userid'],
+            'answers' => '{"items":{},"blocks":{}}',
+            'status' => MYLKPD_STATUS_DRAFT,
+            'revision' => 0,
+            'timecreated' => $now,
+            'timemodified' => $now,
+            'timegraded' => 0,
+        ]);
+        $sub->id = $DB->insert_record('mylkpd_submissions', $sub);
+    }
+    return $sub ?: null;
+}
+
+/**
  * Saves changes from one browser and returns everything that changed since $sincerev.
  *
  * Every item and paragraph carries the revision of its last change ("v"), so each browser only
@@ -338,12 +402,18 @@ function mylkpd_find_submission(stdClass $mylkpd, $cm, int $userid, bool $create
  * @param string $block paragraph the user is editing now ('' if none)
  * @return array
  */
-function mylkpd_sync(stdClass $mylkpd, $cm, int $userid, int $sincerev, array $ops, string $block): array {
+function mylkpd_sync(stdClass $mylkpd, $cm, int $userid, int $sincerev, array $ops, string $block,
+        ?array $teacherfor = null): array {
     global $DB;
 
-    $key = $mylkpd->teamsubmission ? 'g' . mylkpd_get_user_groupid($cm, $userid) : 'u' . $userid;
-    if ($key === 'g0') {
-        throw new moodle_exception('nogroup', 'mod_mylkpd');
+    $isteacher = $teacherfor !== null;
+    if ($isteacher) {
+        $key = $mylkpd->teamsubmission ? 'g' . $teacherfor['groupid'] : 'u' . $teacherfor['userid'];
+    } else {
+        $key = $mylkpd->teamsubmission ? 'g' . mylkpd_get_user_groupid($cm, $userid) : 'u' . $userid;
+        if ($key === 'g0') {
+            throw new moodle_exception('nogroup', 'mod_mylkpd');
+        }
     }
     $lock = \core\lock\lock_config::get_lock_factory('mod_mylkpd_sync')
         ->get_lock('sub_' . $mylkpd->id . '_' . $key, 10);
@@ -352,11 +422,12 @@ function mylkpd_sync(stdClass $mylkpd, $cm, int $userid, int $sincerev, array $o
     }
 
     try {
-        $sub = mylkpd_find_submission($mylkpd, $cm, $userid, true);
+        $sub = mylkpd_target_submission($mylkpd, $cm, $userid, $teacherfor, true);
         $data = mylkpd_decode_data($sub->answers);
         $changed = false;
 
-        if ($ops && $sub->status != MYLKPD_STATUS_SUBMITTED) {
+        // Teachers may annotate at any time; students only until they submit.
+        if ($ops && ($isteacher || $sub->status != MYLKPD_STATUS_SUBMITTED)) {
             $live = count(array_filter($data['items'], function($i) {
                 return empty($i['deleted']);
             }));
@@ -371,8 +442,16 @@ function mylkpd_sync(stdClass $mylkpd, $cm, int $userid, int $sincerev, array $o
                 $kind = $op['kind'] ?? '';
                 $action = $op['op'] ?? '';
 
+                $existing = $data['items'][$id] ?? null;
+                $teacheritem = $existing && empty($existing['deleted']) && !empty($existing['teacher']);
+                if ($kind === 'item' && $teacheritem && !$isteacher) {
+                    continue; // Students cannot change or remove what the teacher wrote.
+                }
                 if ($kind === 'item' && $action === 'put') {
                     $item = mylkpd_clean_item($op['data'] ?? null);
+                    if ($item && $item['type'] === 'note' && !$isteacher) {
+                        continue;
+                    }
                     if ($item && $item['type'] === 'image' && !get_file_storage()->file_exists(
                             context_module::instance($cm->id)->id, 'mod_mylkpd', 'answerimage', $sub->id, '/', $item['file'])) {
                         continue;
@@ -382,7 +461,11 @@ function mylkpd_sync(stdClass $mylkpd, $cm, int $userid, int $sincerev, array $o
                         continue;
                     }
                     $live += $isnew ? 1 : 0;
-                    $data['items'][$id] = $item + ['v' => ++$sub->revision, 'by' => $userid];
+                    $item += ['v' => ++$sub->revision, 'by' => $userid];
+                    if ($teacheritem || ($isnew && $isteacher)) {
+                        $item['teacher'] = 1;
+                    }
+                    $data['items'][$id] = $item;
                     $changed = true;
                 } else if ($kind === 'item' && $action === 'del') {
                     if (isset($data['items'][$id]) && empty($data['items'][$id]['deleted'])) {
@@ -393,6 +476,9 @@ function mylkpd_sync(stdClass $mylkpd, $cm, int $userid, int $sincerev, array $o
                 } else if ($kind === 'block' && $action === 'put' && ctype_digit($id) && (int) $id < 100000) {
                     $html = purify_html(core_text::substr((string) ($op['html'] ?? ''), 0, 20000));
                     $data['blocks'][$id] = ['html' => $html, 'v' => ++$sub->revision, 'by' => $userid];
+                    if ($isteacher) {
+                        $data['blocks'][$id]['teacher'] = 1;
+                    }
                     $changed = true;
                 }
             }
@@ -400,7 +486,10 @@ function mylkpd_sync(stdClass $mylkpd, $cm, int $userid, int $sincerev, array $o
 
         if ($changed) {
             $sub->answers = json_encode($data, JSON_UNESCAPED_UNICODE);
-            $sub->timemodified = time();
+            if (!$isteacher) {
+                // Teacher annotations do not count as the student's last change.
+                $sub->timemodified = time();
+            }
             $DB->update_record('mylkpd_submissions', $sub);
         }
     } finally {
@@ -411,12 +500,15 @@ function mylkpd_sync(stdClass $mylkpd, $cm, int $userid, int $sincerev, array $o
     if ($mylkpd->teamsubmission) {
         $now = time();
         $block = ctype_digit($block) ? $block : '';
-        $mine = $DB->get_record('mylkpd_presence', ['submissionid' => $sub->id, 'userid' => $userid]);
-        if (!$mine) {
-            $DB->insert_record('mylkpd_presence', (object) ['submissionid' => $sub->id, 'userid' => $userid,
-                'block' => $block, 'timeseen' => $now]);
-        } else if ((string) $mine->block !== $block || $now - $mine->timeseen >= 10) {
-            $DB->update_record('mylkpd_presence', (object) ['id' => $mine->id, 'block' => $block, 'timeseen' => $now]);
+        // Teachers see who is online but are not recorded, so they never lock paragraphs for students.
+        if (!$isteacher) {
+            $mine = $DB->get_record('mylkpd_presence', ['submissionid' => $sub->id, 'userid' => $userid]);
+            if (!$mine) {
+                $DB->insert_record('mylkpd_presence', (object) ['submissionid' => $sub->id, 'userid' => $userid,
+                    'block' => $block, 'timeseen' => $now]);
+            } else if ((string) $mine->block !== $block || $now - $mine->timeseen >= 10) {
+                $DB->update_record('mylkpd_presence', (object) ['id' => $mine->id, 'block' => $block, 'timeseen' => $now]);
+            }
         }
         $rows = $DB->get_records_select('mylkpd_presence', 'submissionid = ? AND timeseen > ?', [$sub->id, $now - 40]);
         foreach ($rows as $row) {
@@ -461,7 +553,8 @@ define('MYLKPD_IMAGE_MAXCOUNT', 30);
  * @param array|null $upload entry from $_FILES
  * @return array ['file', 'itemid', 'width', 'height'] or ['error' => message]
  */
-function mylkpd_store_answer_image(stdClass $mylkpd, $cm, context_module $context, int $userid, ?array $upload): array {
+function mylkpd_store_answer_image(stdClass $mylkpd, $cm, context_module $context, int $userid, ?array $upload,
+        ?array $teacherfor = null): array {
     if (!$upload || ($upload['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK || !is_uploaded_file($upload['tmp_name'])) {
         return ['error' => get_string('imageerror', 'mod_mylkpd')];
     }
@@ -474,11 +567,11 @@ function mylkpd_store_answer_image(stdClass $mylkpd, $cm, context_module $contex
     if (!$info || !isset($types[$info[2]])) {
         return ['error' => get_string('imagetypeinvalid', 'mod_mylkpd')];
     }
-    if (!empty($mylkpd->teamsubmission) && !mylkpd_get_user_groupid($cm, $userid)) {
+    if (!$teacherfor && !empty($mylkpd->teamsubmission) && !mylkpd_get_user_groupid($cm, $userid)) {
         return ['error' => get_string('nogroup', 'mod_mylkpd')];
     }
-    $sub = mylkpd_find_submission($mylkpd, $cm, $userid, true);
-    if ($sub->status == MYLKPD_STATUS_SUBMITTED) {
+    $sub = mylkpd_target_submission($mylkpd, $cm, $userid, $teacherfor, true);
+    if (!$teacherfor && $sub->status == MYLKPD_STATUS_SUBMITTED) {
         return ['error' => get_string('alreadysubmitted', 'mod_mylkpd')];
     }
     $fs = get_file_storage();
@@ -540,6 +633,29 @@ function mylkpd_members(array $userids): array {
         }
     }
     return $out;
+}
+
+/**
+ * Everyone whose name can appear on the worksheet: the members, plus teachers who annotated it.
+ *
+ * @param int[] $memberids
+ * @param array $data from mylkpd_decode_data()
+ * @param int $graderid the teacher on the grading page (0 for students)
+ * @return array ['members' => userid => [name, color], 'teachers' => int[]]
+ */
+function mylkpd_editor_people(array $memberids, array $data, int $graderid = 0): array {
+    $teachers = $graderid ? [$graderid => true] : [];
+    foreach (array_merge(array_values($data['items']), array_values($data['blocks'])) as $entry) {
+        if (!empty($entry['teacher']) && !empty($entry['by']) && empty($entry['deleted'])) {
+            $teachers[(int) $entry['by']] = true;
+        }
+    }
+    $members = mylkpd_members($memberids);
+    foreach (mylkpd_members(array_keys($teachers)) as $uid => $info) {
+        $members[$uid] = ['name' => $info['name'] . ' (' . get_string('teacherlabel', 'mod_mylkpd') . ')',
+            'color' => '#c62828'];
+    }
+    return ['members' => $members, 'teachers' => array_map('intval', array_keys($teachers))];
 }
 
 /**
@@ -690,7 +806,7 @@ function mylkpd_toolbar_button(string $attr, string $value, string $icon, string
  * @param string $teambar HTML for group work (presence and names toggle), or ''
  * @return string HTML
  */
-function mylkpd_render_toolbar(bool $cantype, string $defaulttool, string $teambar = ''): string {
+function mylkpd_render_toolbar(bool $cantype, string $defaulttool, string $teambar = '', bool $teacher = false): string {
     $s = function($key) {
         return get_string($key, 'mod_mylkpd');
     };
@@ -704,7 +820,11 @@ function mylkpd_render_toolbar(bool $cantype, string $defaulttool, string $teamb
     if ($cantype) {
         $tools['type'] = '&#9000;';
     }
-    $tools += ['move' => '&#10021;', 'text' => 'T', 'check' => '&#10003;', 'cross' => '&#10007;',
+    $tools += ['move' => '&#10021;', 'text' => 'T'];
+    if ($teacher) {
+        $tools['note'] = '&#128221;';
+    }
+    $tools += ['check' => '&#10003;', 'cross' => '&#10007;',
         'circle' => '&#9711;', 'highlight' => '&#9644;', 'line' => '&#9585;', 'pen' => '&#9998;', 'erase' => '&#9003;'];
     $buttons = '';
     foreach ($tools as $tool => $icon) {
@@ -714,14 +834,15 @@ function mylkpd_render_toolbar(bool $cantype, string $defaulttool, string $teamb
 
     $names = ['colorblue', 'colorred', 'colorblack', 'colorgreen', 'coloryellow'];
     $style = '';
+    $activecolor = $teacher ? 1 : 0; // Teachers correct in red.
     foreach (mylkpd_colors() as $i => $color) {
         $label = $s($names[$i]);
         $style .= html_writer::tag('button', '', [
             'type' => 'button',
-            'class' => 'mylkpd-swatch' . ($i === 0 ? ' active' : ''),
+            'class' => 'mylkpd-swatch' . ($i === $activecolor ? ' active' : ''),
             'style' => 'background-color:' . $color,
             'data-mylkpd-color' => $color,
-            'aria-pressed' => $i === 0 ? 'true' : 'false',
+            'aria-pressed' => $i === $activecolor ? 'true' : 'false',
             'aria-label' => $label,
             'title' => $label,
         ]);
@@ -763,7 +884,7 @@ function mylkpd_render_toolbar(bool $cantype, string $defaulttool, string $teamb
     $row2 .= $group($buttons, $s('insert'), 'mylkpd-inserts');
     $row2 .= html_writer::tag('details',
         html_writer::tag('summary', '&#9432; ' . $s('help'), ['class' => 'btn btn-sm btn-link']) .
-        html_writer::div($s($cantype ? 'toolhinttype' : 'toolhint'), 'mylkpd-help-text small'),
+        html_writer::div($s($teacher ? 'teacherhint' : ($cantype ? 'toolhinttype' : 'toolhint')), 'mylkpd-help-text small'),
         ['class' => 'mylkpd-help']);
     $html .= html_writer::div($row2, 'mylkpd-row');
 
@@ -804,7 +925,7 @@ function mylkpd_status_badge(?stdClass $sub): string {
  * @return array ['html' => string, 'ready' => bool]
  */
 function mylkpd_render_worksheet(stdClass $mylkpd, $cm, context_module $context, ?stdClass $submission,
-        bool $readonly, array $memberids = []): array {
+        bool $readonly, array $memberids = [], ?array $teacherfor = null): array {
     global $PAGE, $OUTPUT, $USER;
 
     $doc = mylkpd_get_document($mylkpd, $context);
@@ -822,8 +943,15 @@ function mylkpd_render_worksheet(stdClass $mylkpd, $cm, context_module $context,
     // A .docx shown in the browser can always be typed into, alongside the drawing tools.
     $cantype = $doc['mode'] === 'docx';
     $defaulttool = ($cantype && $workmode === 'edit') ? 'type' : 'text';
-    $data = mylkpd_client_data(mylkpd_decode_data($submission->answers ?? null));
+    $decoded = mylkpd_decode_data($submission->answers ?? null);
+    $data = mylkpd_client_data($decoded);
     $team = !empty($mylkpd->teamsubmission);
+    $isteacher = $teacherfor !== null && !$readonly;
+    $people = mylkpd_editor_people($memberids, $decoded, $isteacher ? (int) $USER->id : 0);
+    if ($isteacher) {
+        // On Word worksheets the teacher starts by editing the text; otherwise by adding notes.
+        $defaulttool = $cantype ? 'type' : 'note';
+    }
 
     $config = [
         'containerId' => 'mylkpd-container',
@@ -844,12 +972,15 @@ function mylkpd_render_worksheet(stdClass $mylkpd, $cm, context_module $context,
         'sesskey' => sesskey(),
         'userid' => (int) $USER->id,
         'rev' => (int) ($submission->revision ?? 0),
-        'collab' => $team && !$readonly,
+        'collab' => ($team || $isteacher) && !$readonly,
         'showNames' => $team,
+        'isTeacher' => $isteacher,
+        'teacherIds' => $people['teachers'],
+        'target' => $isteacher ? ['targetuser' => $teacherfor['userid'], 'targetgroup' => $teacherfor['groupid']] : null,
         'colors' => mylkpd_colors(),
         'items' => $data['items'],
         'blocks' => $data['blocks'],
-        'members' => (object) mylkpd_members($memberids),
+        'members' => (object) $people['members'],
         'readonly' => $readonly,
         'strings' => [
             'answer' => get_string('answer', 'mod_mylkpd'),
@@ -886,6 +1017,10 @@ function mylkpd_render_worksheet(stdClass $mylkpd, $cm, context_module $context,
             'imageerror' => get_string('imageerror', 'mod_mylkpd'),
             'imagehint' => get_string('imagehint', 'mod_mylkpd'),
             'resize' => get_string('imageresize', 'mod_mylkpd'),
+            'note' => get_string('toolnote', 'mod_mylkpd'),
+            'teacher' => get_string('teacherlabel', 'mod_mylkpd'),
+            'notehint' => get_string('notehint', 'mod_mylkpd'),
+            'openlink' => get_string('openlink', 'mod_mylkpd'),
         ],
     ];
 
@@ -901,8 +1036,10 @@ function mylkpd_render_worksheet(stdClass $mylkpd, $cm, context_module $context,
             ['class' => 'mylkpd-namestoggle small']);
     }
     if (!$readonly) {
-        $teambar = $team ? html_writer::div('', 'mylkpd-presence', ['id' => 'mylkpd-presence', 'aria-live' => 'polite']) . $toggle : '';
-        $html .= mylkpd_render_toolbar($cantype, $defaulttool, $teambar);
+        $teambar = ($team && !$isteacher) ?
+            html_writer::div('', 'mylkpd-presence', ['id' => 'mylkpd-presence', 'aria-live' => 'polite']) . $toggle :
+            ($team ? $toggle : '');
+        $html .= mylkpd_render_toolbar($cantype, $defaulttool, $teambar, $isteacher);
     } else if ($team) {
         $html .= html_writer::div($toggle, 'mylkpd-teambar');
     }

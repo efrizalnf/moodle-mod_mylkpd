@@ -144,7 +144,7 @@ var MyLKPD = (function() {
     function canon(it) {
         var o = {};
         Object.keys(it).forEach(function(k) {
-            if (k !== 'v' && k !== 'by' && k !== 'id') {
+            if (k !== 'v' && k !== 'by' && k !== 'id' && k !== 'teacher') {
                 o[k] = it[k];
             }
         });
@@ -154,7 +154,7 @@ var MyLKPD = (function() {
     function strip(it) {
         var o = {};
         Object.keys(it).forEach(function(k) {
-            if (k !== 'v' && k !== 'by' && k !== 'id') {
+            if (k !== 'v' && k !== 'by' && k !== 'id' && k !== 'teacher') {
                 o[k] = it[k];
             }
         });
@@ -185,7 +185,9 @@ var MyLKPD = (function() {
         var showNames = !!cfg.showNames;
         var undoStack = [];
         var tool = cfg.defaultTool || 'text';
-        var color = (cfg.colors && cfg.colors[0]) || '#1a47b8';
+        var isTeacher = !!cfg.isTeacher;
+        var teacherIds = cfg.teacherIds || [];
+        var color = (cfg.colors && cfg.colors[isTeacher ? 1 : 0]) || '#1a47b8';
         var width = 4;
 
         // Sync state.
@@ -209,6 +211,38 @@ var MyLKPD = (function() {
         items.forEach(function(it) {
             shadowItems[it.id] = canon(it);
         });
+
+        /**
+         * Whether the current user may change this item (students cannot touch the teacher's annotations).
+         *
+         * @param {Object} item
+         * @return {Boolean}
+         */
+        function canEdit(item) {
+            return !readonly && (isTeacher || !item.teacher);
+        }
+
+        function isTeacherAuthor(uid) {
+            return teacherIds.indexOf(uid) >= 0;
+        }
+
+        /**
+         * Name and colour for an author label. Teachers who annotated after the page was opened are not in
+         * the member list yet, so they are shown as "Teacher" in red.
+         *
+         * @param {Number} uid
+         * @param {Boolean} byTeacher
+         * @return {Object|null} {name, color}
+         */
+        function authorInfo(uid, byTeacher) {
+            if (byTeacher && uid && !isTeacherAuthor(uid)) {
+                teacherIds.push(uid);
+            }
+            if (members[uid]) {
+                return members[uid];
+            }
+            return byTeacher ? {name: cfg.strings.teacher, color: '#c62828'} : null;
+        }
 
         function newId() {
             return cfg.userid + '-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -275,6 +309,50 @@ var MyLKPD = (function() {
             return clone.innerHTML;
         }
 
+        var URL_RE = /\b(?:https?:\/\/|www\.)[^\s<>"']*[^\s<>"'.,;:!?)\]]/gi;
+
+        function hrefFor(url) {
+            return /^www\./i.test(url) ? 'https://' + url : url;
+        }
+
+        /**
+         * Makes web addresses that were typed as plain text into links (not inside existing links/equations).
+         *
+         * @param {HTMLElement} p
+         * @return {Boolean} whether anything changed
+         */
+        function linkify(p) {
+            var walker = document.createTreeWalker(p, NodeFilter.SHOW_TEXT, null);
+            var nodes = [];
+            while (walker.nextNode()) {
+                var n = walker.currentNode;
+                URL_RE.lastIndex = 0;
+                if (URL_RE.test(n.nodeValue) && !(n.parentNode.closest && n.parentNode.closest('a, .mylkpd-math'))) {
+                    nodes.push(n);
+                }
+            }
+            nodes.forEach(function(node) {
+                var text = node.nodeValue;
+                var frag = document.createDocumentFragment();
+                var last = 0;
+                var m;
+                URL_RE.lastIndex = 0;
+                while ((m = URL_RE.exec(text)) !== null) {
+                    frag.appendChild(document.createTextNode(text.slice(last, m.index)));
+                    var a = document.createElement('a');
+                    a.href = hrefFor(m[0]);
+                    a.textContent = m[0];
+                    a.target = '_blank';
+                    a.rel = 'noopener noreferrer';
+                    frag.appendChild(a);
+                    last = URL_RE.lastIndex;
+                }
+                frag.appendChild(document.createTextNode(text.slice(last)));
+                node.parentNode.replaceChild(frag, node);
+            });
+            return nodes.length > 0;
+        }
+
         /**
          * Turns \(TeX\) text inside a paragraph into rendered equation chips; makes links open in a new tab.
          *
@@ -304,10 +382,48 @@ var MyLKPD = (function() {
                     node.parentNode.replaceChild(frag, node);
                 }
             });
+            linkify(p);
             Array.prototype.forEach.call(p.querySelectorAll('a[href]'), function(a) {
                 a.target = '_blank';
                 a.rel = 'noopener noreferrer';
             });
+        }
+
+        // ---- Small "Open link" bubble for links inside paragraphs that are being edited.
+
+        var linkPop = null;
+
+        function hideLinkPop() {
+            if (linkPop) {
+                linkPop.style.display = 'none';
+            }
+        }
+
+        function showLinkPop(a) {
+            if (!linkPop) {
+                linkPop = document.createElement('div');
+                linkPop.className = 'mylkpd-linkpop';
+                var open = document.createElement('a');
+                open.target = '_blank';
+                open.rel = 'noopener noreferrer';
+                open.className = 'mylkpd-linkpop-open';
+                linkPop.appendChild(open);
+                document.body.appendChild(linkPop);
+                document.addEventListener('mousedown', function(e) {
+                    if (linkPop && !linkPop.contains(e.target) && !(e.target.closest && e.target.closest('a[href]'))) {
+                        hideLinkPop();
+                    }
+                });
+                window.addEventListener('scroll', hideLinkPop, true);
+            }
+            var link = linkPop.firstChild;
+            link.href = a.href;
+            link.textContent = '\u2197 ' + cfg.strings.openlink + ': ' +
+                (a.href.length > 60 ? a.href.slice(0, 57) + '\u2026' : a.href);
+            var r = a.getBoundingClientRect();
+            linkPop.style.display = 'block';
+            linkPop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - linkPop.offsetWidth - 8)) + 'px';
+            linkPop.style.top = Math.max(8, r.top - linkPop.offsetHeight - 6) + 'px';
         }
 
         // ------------------------------------------------ Saving and syncing.
@@ -394,6 +510,10 @@ var MyLKPD = (function() {
             body.append('rev', rev);
             body.append('ops', JSON.stringify(ops));
             body.append('block', currentBlock);
+            if (cfg.target) {
+                body.append('targetuser', cfg.target.targetuser || 0);
+                body.append('targetgroup', cfg.target.targetgroup || 0);
+            }
             return body;
         }
 
@@ -427,7 +547,7 @@ var MyLKPD = (function() {
                 if (ops.length || (stateEl && stateEl.classList.contains('mylkpd-state-saveerror'))) {
                     setState('saved');
                 }
-                if (res.status === 1) {
+                if (res.status === 1 && !isTeacher) {
                     // Someone (a group mate) submitted: reload to show the locked worksheet.
                     window.removeEventListener('beforeunload', warnUnsaved);
                     window.location.reload();
@@ -494,7 +614,7 @@ var MyLKPD = (function() {
                     hydrateBlock(el);
                 }
                 shadowBlocks[id] = serializeBlock(el);
-                markEdited(el, b.by);
+                markEdited(el, b.by, b.teacher);
             });
             if (res.presence) {
                 applyPresence(res.presence);
@@ -603,10 +723,6 @@ var MyLKPD = (function() {
 
         // ------------------------------------------------ Author name labels (group work).
 
-        function authorName(uid) {
-            return members[uid] ? members[uid].name : '';
-        }
-
         function labelAnchor(item) {
             if (item.type === 'line') {
                 return {x: Math.min(item.x1, item.x2), y: Math.min(item.y1, item.y2)};
@@ -625,7 +741,8 @@ var MyLKPD = (function() {
 
         function updateLabel(item) {
             var label = labels.get(item);
-            var name = showNames ? authorName(item.by) : '';
+            var info = authorInfo(item.by, !!item.teacher);
+            var name = (info && (showNames || item.teacher || isTeacherAuthor(item.by))) ? info.name : '';
             if (!name) {
                 if (label && label.parentNode) {
                     label.parentNode.removeChild(label);
@@ -644,7 +761,7 @@ var MyLKPD = (function() {
             }
             label.className = 'mylkpd-namelabel mylkpd-namelabel-' + item.type;
             label.textContent = name;
-            label.style.background = members[item.by].color;
+            label.style.background = info.color;
             var a = labelAnchor(item);
             label.style.left = a.x + '%';
             label.style.top = a.y + '%';
@@ -705,12 +822,17 @@ var MyLKPD = (function() {
                 updateLabel(item);
             }
             if (item.type === 'text' || item.type === 'check' || item.type === 'cross' ||
-                    item.type === 'math' || item.type === 'link' || item.type === 'image') {
+                    item.type === 'math' || item.type === 'link' || item.type === 'image' || item.type === 'note') {
                 el.style.left = item.x + '%';
                 el.style.top = item.y + '%';
                 if (item.type === 'image') {
                     el.style.width = item.w + '%';
                     el.style.height = item.h + '%';
+                }
+                if (item.type === 'note') {
+                    // Open the bubble towards the middle of the page so it is never cut off.
+                    el.classList.toggle('mylkpd-note-left', item.x > 55);
+                    el.classList.toggle('mylkpd-note-up', item.y > 70);
                 }
                 return;
             }
@@ -729,7 +851,7 @@ var MyLKPD = (function() {
             var ta = document.createElement('textarea');
             ta.rows = 1;
             ta.value = item.text || '';
-            ta.readOnly = readonly;
+            ta.readOnly = !canEdit(item);
             ta.spellcheck = false;
             ta.style.color = item.color;
             ta.style.borderColor = item.color;
@@ -738,7 +860,7 @@ var MyLKPD = (function() {
             if (item.by && memberName(item.by)) {
                 el.title = cfg.strings.editedby.replace('{name}', memberName(item.by));
             }
-            if (!readonly) {
+            if (canEdit(item)) {
                 var before = null;
                 ta.addEventListener('focus', function() {
                     // New boxes are already covered by the undo entry made when they were created.
@@ -767,6 +889,89 @@ var MyLKPD = (function() {
                 });
             }
             el.appendChild(ta);
+            var linkRow = document.createElement('div');
+            linkRow.className = 'mylkpd-textlinks';
+            el.appendChild(linkRow);
+            var showLinks = function() {
+                linkRow.textContent = '';
+                (ta.value.match(URL_RE) || []).slice(0, 3).forEach(function(url) {
+                    var a = document.createElement('a');
+                    a.href = hrefFor(url);
+                    a.target = '_blank';
+                    a.rel = 'noopener noreferrer';
+                    a.textContent = '\u2197 ' + (url.length > 40 ? url.slice(0, 37) + '\u2026' : url);
+                    a.title = url;
+                    linkRow.appendChild(a);
+                });
+            };
+            showLinks();
+            ta.addEventListener('input', showLinks);
+            return el;
+        }
+
+        /**
+         * Teacher's sticky note: a pin on the page that opens a bubble with the note text.
+         *
+         * @param {Object} item
+         * @return {HTMLElement}
+         */
+        function createNote(item) {
+            var el = document.createElement('div');
+            el.className = 'mylkpd-item mylkpd-note';
+            el.style.setProperty('--mylkpd-note', item.color);
+            var pin = document.createElement('button');
+            pin.type = 'button';
+            pin.className = 'mylkpd-note-pin';
+            pin.textContent = '\uD83D\uDCDD';
+            pin.setAttribute('aria-label', cfg.strings.note);
+            pin.setAttribute('aria-expanded', 'false');
+            var bubble = document.createElement('div');
+            bubble.className = 'mylkpd-note-bubble';
+            if (canEdit(item)) {
+                var ta = document.createElement('textarea');
+                ta.rows = 3;
+                ta.value = item.text || '';
+                ta.dir = 'auto';
+                ta.placeholder = cfg.strings.notehint;
+                ta.setAttribute('aria-label', cfg.strings.note);
+                var before = null;
+                ta.addEventListener('focus', function() {
+                    before = item.text ? copy(item) : null;
+                });
+                ta.addEventListener('input', function() {
+                    if (before) {
+                        recordUndo([{id: item.id, before: before}]);
+                        before = null;
+                    }
+                    item.text = ta.value;
+                    claim(item);
+                    changed();
+                });
+                ta.addEventListener('blur', function() {
+                    if (ta.value.trim() === '' && items.indexOf(item) >= 0) {
+                        var top = undoStack[undoStack.length - 1];
+                        if (top && top.length === 1 && top[0].id === item.id && top[0].before === null) {
+                            undoStack.pop();
+                            updateUndo();
+                        }
+                        removeItem(item);
+                    }
+                });
+                bubble.appendChild(ta);
+            } else {
+                bubble.textContent = item.text || '';
+            }
+            pin.addEventListener('click', function() {
+                var open = !el.classList.contains('mylkpd-open');
+                el.classList.toggle('mylkpd-open', open);
+                pin.setAttribute('aria-expanded', open ? 'true' : 'false');
+                var field = bubble.querySelector('textarea');
+                if (open && field) {
+                    field.focus();
+                }
+            });
+            el.appendChild(pin);
+            el.appendChild(bubble);
             return el;
         }
 
@@ -778,6 +983,8 @@ var MyLKPD = (function() {
             var el;
             if (item.type === 'text') {
                 el = createText(item);
+            } else if (item.type === 'note') {
+                el = createNote(item);
             } else if (item.type === 'image') {
                 el = document.createElement('div');
                 el.className = 'mylkpd-item mylkpd-imageitem';
@@ -885,7 +1092,7 @@ var MyLKPD = (function() {
 
         function eraseAt(e, state) {
             var item = itemAt(e);
-            if (!item || items.indexOf(item) < 0) {
+            if (!item || items.indexOf(item) < 0 || !canEdit(item)) {
                 return;
             }
             if (!state.group) {
@@ -926,6 +1133,10 @@ var MyLKPD = (function() {
                 var p = pointFrom(layer, e);
                 var targetEl = closestItem(e.target);
                 var targetItem = targetEl ? owners.get(targetEl) : null;
+                if (targetItem && !canEdit(targetItem)) {
+                    // The teacher's annotations can be read (notes opened) but not moved or erased.
+                    return;
+                }
 
                 if (e.target.classList && e.target.classList.contains('mylkpd-resize') && targetItem) {
                     // Resize from the bottom-right corner, keeping the picture's proportions.
@@ -951,13 +1162,13 @@ var MyLKPD = (function() {
                     placeItem(tool, num, p);
                     return;
                 }
-                if (tool === 'text' || tool === 'check' || tool === 'cross') {
+                if (tool === 'text' || tool === 'check' || tool === 'cross' || tool === 'note') {
                     if (targetEl) {
                         return; // Let the student click into an existing box.
                     }
                     e.preventDefault();
                     var it = {id: newId(), page: num, type: tool, x: p.x, y: p.y, color: color, by: cfg.userid};
-                    if (tool === 'text') {
+                    if (tool === 'text' || tool === 'note') {
                         it.text = '';
                     }
                     recordUndo([{id: it.id, before: null}]);
@@ -966,6 +1177,9 @@ var MyLKPD = (function() {
                     changed();
                     if (tool === 'text' && el) {
                         el.firstChild.focus();
+                    } else if (tool === 'note' && el) {
+                        el.classList.add('mylkpd-open');
+                        el.querySelector('textarea').focus();
                     }
                     return;
                 }
@@ -1126,13 +1340,16 @@ var MyLKPD = (function() {
 
         // ------------------------------------------------ Edit mode: paragraphs of the .docx.
 
-        function markEdited(el, by) {
+        function markEdited(el, by, byTeacher) {
             el.classList.add('mylkpd-edited');
-            if (by && members[by]) {
-                el.style.setProperty('--mylkpd-peer', members[by].color);
-                el.title = cfg.strings.editedby.replace('{name}', authorName(by));
-                if (showNames) {
-                    el.setAttribute('data-mylkpd-by', authorName(by));
+            var info = by ? authorInfo(by, !!byTeacher) : null;
+            if (info) {
+                el.style.setProperty('--mylkpd-peer', info.color);
+                el.title = cfg.strings.editedby.replace('{name}', info.name);
+                if (showNames || byTeacher || isTeacherAuthor(by)) {
+                    el.setAttribute('data-mylkpd-by', info.name);
+                } else {
+                    el.removeAttribute('data-mylkpd-by');
                 }
             }
         }
@@ -1142,7 +1359,7 @@ var MyLKPD = (function() {
             p.spellcheck = false;
             p.addEventListener('input', function() {
                 touched[id] = true;
-                markEdited(p, cfg.userid);
+                markEdited(p, cfg.userid, isTeacher);
                 scheduleSave();
             });
             p.addEventListener('focus', function() {
@@ -1154,6 +1371,9 @@ var MyLKPD = (function() {
             p.addEventListener('blur', function() {
                 if (currentBlock === id) {
                     currentBlock = '';
+                }
+                if (linkify(p)) {
+                    touched[id] = true;
                 }
                 if (cfg.collab || touched[id]) {
                     scheduleSave(150);
@@ -1183,6 +1403,10 @@ var MyLKPD = (function() {
                 var a = e.target.closest ? e.target.closest('a[href]') : null;
                 if (a && (e.ctrlKey || e.metaKey)) {
                     window.open(a.href, '_blank', 'noopener');
+                } else if (a) {
+                    showLinkPop(a);
+                } else {
+                    hideLinkPop();
                 }
             });
         }
@@ -1197,7 +1421,7 @@ var MyLKPD = (function() {
                 p.classList.add('mylkpd-block');
                 if (saved[id] && typeof saved[id].html === 'string') {
                     p.innerHTML = saved[id].html;
-                    markEdited(p, saved[id].by);
+                    markEdited(p, saved[id].by, saved[id].teacher);
                 }
                 hydrateBlock(p);
                 shadowBlocks[id] = serializeBlock(p);
@@ -1239,6 +1463,43 @@ var MyLKPD = (function() {
             });
         }
 
+        /**
+         * docx-preview puts "in front of / behind text" pictures (wrapNone) in a 0x0 inline-block, so the
+         * picture still takes up a whole line and pushes the worksheet text down, and it ignores "behind text".
+         * Page-wide pictures (backgrounds, banners, frames) are placed on the page at their position from
+         * the document, behind the text; smaller ones are taken out of the text flow where they are.
+         *
+         * @param {HTMLElement} holder
+         */
+        function fixFloatingImages(holder) {
+            Array.prototype.forEach.call(holder.querySelectorAll('section.docx'), function(section) {
+                var pageWidth = section.getBoundingClientRect().width;
+                Array.prototype.forEach.call(section.querySelectorAll('div'), function(wrap) {
+                    var st = wrap.style;
+                    if (st.position !== 'relative' || st.width !== '0px' || st.height !== '0px') {
+                        return;
+                    }
+                    var img = wrap.querySelector('img, svg');
+                    if (!img) {
+                        return;
+                    }
+                    var left = st.left || '0pt';
+                    var top = st.top || '0pt';
+                    img.style.position = 'absolute';
+                    img.style.left = left;
+                    img.style.top = top;
+                    img.style.maxWidth = 'none';
+                    if (img.getBoundingClientRect().width >= pageWidth * 0.6) {
+                        // Positioned from the page corner, behind the text (header/body text sit above it).
+                        img.classList.add('mylkpd-docx-bg');
+                        section.insertBefore(img, section.firstChild);
+                    } else {
+                        img.classList.add('mylkpd-docx-float');
+                    }
+                });
+            });
+        }
+
         function renderDocx() {
             var holder = document.createElement('div');
             holder.className = 'mylkpd-docx';
@@ -1270,6 +1531,7 @@ var MyLKPD = (function() {
                     });
                 });
             }).then(function() {
+                fixFloatingImages(holder);
                 if (canType) {
                     setupBlocks(holder);
                 }
@@ -1842,6 +2104,10 @@ var MyLKPD = (function() {
             form.append('sesskey', cfg.sesskey);
             form.append('cmid', cfg.cmid);
             form.append('image', prepared.blob, prepared.name);
+            if (cfg.target) {
+                form.append('targetuser', cfg.target.targetuser || 0);
+                form.append('targetgroup', cfg.target.targetgroup || 0);
+            }
             return fetch(cfg.uploadUrl, {method: 'POST', credentials: 'same-origin', body: form}).then(function(r) {
                 return r.json();
             }).then(function(res) {
@@ -1964,22 +2230,64 @@ var MyLKPD = (function() {
             });
         }
 
+        /**
+         * Keeps the toolbar below whatever the theme pins to the top of the screen: the navbar, and in some
+         * themes the activity's secondary navigation (MyLKPD · Settings · Advanced grading).
+         */
         function stickyOffset() {
             var page = document.getElementById('page');
-            var overflow = page ? window.getComputedStyle(page).overflowY : '';
+            var scroller = (page && /(auto|scroll)/.test(window.getComputedStyle(page).overflowY)) ? page : null;
+            var baseTop = scroller ? scroller.getBoundingClientRect().top : 0;
+            var toolbar = document.querySelector('.mylkpd-toolbar');
             var top = 0;
-            if (overflow !== 'auto' && overflow !== 'scroll') {
-                var nav = document.querySelector('nav.fixed-top, .navbar.fixed-top');
-                if (nav) {
-                    top = Math.round(nav.getBoundingClientRect().height);
+            var bars = document.querySelectorAll('header, nav, .navbar, .secondary-navigation, .sticky-top, .fixed-top, ' +
+                '[class*="sticky"], [class*="fixed"]');
+            Array.prototype.forEach.call(bars, function(el) {
+                if (el === toolbar || (toolbar && (toolbar.contains(el) || el.contains(toolbar))) || container.contains(el)) {
+                    return;
                 }
-            }
+                var cs = window.getComputedStyle(el);
+                if ((cs.position !== 'fixed' && cs.position !== 'sticky') || cs.display === 'none' ||
+                        cs.visibility === 'hidden') {
+                    return;
+                }
+                var r = el.getBoundingClientRect();
+                // Only bars across the top: not side drawers, small buttons or footers.
+                if (r.height === 0 || r.height > window.innerHeight / 3 || r.width < window.innerWidth / 3) {
+                    return;
+                }
+                var bottom;
+                if (cs.position === 'fixed') {
+                    if (r.top > window.innerHeight / 2) {
+                        return;
+                    }
+                    bottom = r.bottom - baseTop;
+                } else {
+                    var stick = parseFloat(cs.top);
+                    if (isNaN(stick)) {
+                        return;
+                    }
+                    bottom = stick + r.height;
+                }
+                top = Math.max(top, Math.round(bottom));
+            });
             document.documentElement.style.setProperty('--mylkpd-sticky-top', top + 'px');
         }
 
         if (!readonly) {
             stickyOffset();
             window.addEventListener('resize', stickyOffset);
+            // Some themes pin their bars only after scrolling, so check again (at most every 400 ms).
+            var stickyTimer = null;
+            var onScroll = function() {
+                if (!stickyTimer) {
+                    stickyTimer = setTimeout(function() {
+                        stickyTimer = null;
+                        stickyOffset();
+                    }, 400);
+                }
+            };
+            window.addEventListener('scroll', onScroll, true);
             Array.prototype.forEach.call(document.querySelectorAll('[data-mylkpd-tool]'), function(b) {
                 b.addEventListener('click', function() {
                     setTool(b.getAttribute('data-mylkpd-tool'));
@@ -2105,6 +2413,30 @@ var MyLKPD = (function() {
             }
 
             window.addEventListener('beforeunload', warnUnsaved);
+            // On the grading page, save the annotations before the grade form is sent.
+            Array.prototype.forEach.call(document.querySelectorAll('form'), function(form) {
+                if (form.id === 'mylkpd-form' || form.contains(container)) {
+                    return;
+                }
+                form.addEventListener('submit', function(e) {
+                    if (form.getAttribute('data-mylkpd-saved') || (!inflight && !hasPending())) {
+                        window.removeEventListener('beforeunload', warnUnsaved);
+                        return;
+                    }
+                    e.preventDefault();
+                    var submitter = e.submitter;
+                    setState('saving');
+                    flush().then(flush).then(function() {
+                        form.setAttribute('data-mylkpd-saved', '1');
+                        window.removeEventListener('beforeunload', warnUnsaved);
+                        if (form.requestSubmit) {
+                            form.requestSubmit(submitter || undefined);
+                        } else {
+                            form.submit();
+                        }
+                    });
+                });
+            });
             window.addEventListener('pagehide', function() {
                 // Last chance to save when the tab closes.
                 if (hasPending() && navigator.sendBeacon) {

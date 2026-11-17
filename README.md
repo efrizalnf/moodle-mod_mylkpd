@@ -1,6 +1,6 @@
 # MyLKPD (mod_mylkpd) — LKPD Interaktif untuk Moodle
 
-Versi 1.1.0 (beta) · Moodle 4.1+
+Versi 1.2.1 (beta) · Moodle 4.1+
 
 Plugin aktivitas Moodle (4.1+). Guru cukup mengunggah LKPD (PDF atau Word), siswa mengerjakan
 langsung di atas halaman LKPD, lalu guru menilai dari Moodle. Nilai otomatis masuk Gradebook.
@@ -38,6 +38,19 @@ Tombol **🖼 Gambar** (baris Sisipkan) untuk menambahkan foto/gambar ke LKPD, m
   Gambar yang sudah tidak dipakai dihapus saat LKPD dikumpulkan.
 - Ikut tersinkron pada kerja kelompok dan tampil di halaman penilaian guru.
 
+## Anotasi dan catatan guru
+Di halaman penilaian, guru bisa langsung bekerja di LKPD siswa (atau kelompok):
+- Toolbar yang sama dengan siswa, ditambah **📝 Catatan**: catatan tempel di halaman yang terbuka saat
+  diklik. Warna awal guru merah.
+- Guru bisa membetulkan jawaban siswa (paragraf atau kotak teks); bagian itu diberi label nama guru.
+  Pada LKPD Word, alat awal guru adalah **Ketik**, jadi teks siswa bisa langsung diedit.
+- Anotasi guru diberi label "Nama (Guru)" dan **tidak bisa dipindah atau dihapus siswa**
+  (dijaga di server). Siswa bisa membuka dan membaca catatannya.
+- Tersimpan otomatis (ada tombol **Simpan anotasi**), tetap bisa dilakukan setelah LKPD dikumpulkan,
+  dan tidak mengubah "terakhir diubah" milik siswa. Saat tombol simpan nilai ditekan, anotasi
+  yang belum terkirim disimpan dulu.
+- Siswa melihat anotasi guru langsung (tanpa memuat ulang) jika sedang membuka LKPD.
+
 ## Penilaian dengan rubrik
 MyLKPD mendukung *Advanced grading* Moodle (rubrik dan panduan penilaian), sama seperti Assignment.
 1. Di halaman **Jawaban siswa** klik **Atur rubrik** (atau Pengaturan aktivitas > Nilai >
@@ -72,7 +85,8 @@ lewat halaman penilaian.
 - "Cara mengerjakan" dan "Kerja kelompok" terkunci setelah ada siswa yang mulai mengerjakan.
 
 ## Toolbar (referensi CKEditor)
-Satu panel yang menempel di atas saat halaman digulir (menyesuaikan tema Boost/Classic).
+Satu panel yang menempel di atas saat halaman digulir, selalu di bawah bar yang dipasang tema
+(navbar, navigasi sekunder "MyLKPD · Settings · Advanced grading", dll.).
 Baris 1 (alat): **Ketik** (khusus DOCX), Pindah, Teks, Centang, Silang, Lingkari, Stabilo, Garis, Pensil,
 Penghapus | Urungkan/Ulangi.
 Baris 2: format teks paragraf (khusus DOCX): Tebal, Miring, Garis bawah, Coret, Pangkat, Indeks,
@@ -82,6 +96,12 @@ huruf hijaiyah + harakat + angka Arab), **Tautan**.
 
 - File DOCX: alat Ketik dan alat gambar tersedia bersamaan (gambar/coretan di atas halaman Word).
 - File PDF: alat gambar + Persamaan/Tautan diletakkan di halaman; Simbol/Arab masuk ke kotak teks.
+- Gambar Word "di belakang teks" (latar halaman, banner, bingkai) ditempatkan di posisi aslinya di
+  halaman, di belakang teks LKPD, sehingga tata letak template tetap rapi.
+- Alamat web yang diketik siswa otomatis menjadi tautan. Klik tautan di paragraf memunculkan balon
+  "↗ Buka tautan" (Ctrl/Cmd+klik langsung membuka); di mode baca tautan langsung terbuka di tab baru.
+  Alamat web di kotak teks ditampilkan sebagai tautan di bawah kotaknya.
+- URL/kata panjang di tabel dipecah ke baris berikutnya, sehingga tabel tidak melebar keluar halaman.
 - Persamaan di paragraf disimpan sebagai teks `\(LaTeX\)` (aman dari HTMLPurifier); klik untuk mengedit.
 - Kotak teks memakai `dir="auto"`, jadi jawaban berbahasa Arab otomatis rata kanan.
 Posisi gambar disimpan dalam persen halaman, jadi tetap pas di HP maupun laptop.

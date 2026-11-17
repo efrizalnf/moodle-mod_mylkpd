@@ -120,7 +120,9 @@ if ($data = $form->get_data()) {
     redirect($returnurl, get_string('gradesaved', 'mod_mylkpd'), null, \core\output\notification::NOTIFY_SUCCESS);
 }
 
-$worksheet = mylkpd_render_worksheet($mylkpd, $cm, $context, $submission ?: null, true, $memberids);
+// The teacher can write, correct and leave notes directly on the student's worksheet.
+$teacherfor = mylkpd_teacher_target($mylkpd, $userid, $groupid);
+$worksheet = mylkpd_render_worksheet($mylkpd, $cm, $context, $submission ?: null, false, $memberids, $teacherfor);
 
 echo $OUTPUT->header();
 echo $OUTPUT->heading(get_string('gradeuser', 'mod_mylkpd', $title), 3);
@@ -152,7 +154,16 @@ if ($team) {
     echo html_writer::table($table);
 }
 
+echo html_writer::div(get_string('teacherannotatehint', 'mod_mylkpd'), 'mylkpd-teacherhint small text-muted');
 echo $worksheet['html'];
+if ($worksheet['ready']) {
+    echo html_writer::start_div('mylkpd-actions mylkpd-teacheractions');
+    echo html_writer::span('', 'mylkpd-savestate small', ['id' => 'mylkpd-savestate', 'role' => 'status',
+        'aria-live' => 'polite']);
+    echo html_writer::tag('button', '&#128190; ' . get_string('saveannotations', 'mod_mylkpd'),
+        ['type' => 'button', 'class' => 'btn btn-secondary', 'data-mylkpd-action' => 'save']);
+    echo html_writer::end_div();
+}
 echo $OUTPUT->box_start('generalbox mylkpd-gradebox');
 echo $OUTPUT->heading(get_string('grading', 'mod_mylkpd'), 4);
 if ($rubricwarning) {

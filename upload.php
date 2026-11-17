@@ -19,9 +19,23 @@ require_login($course, false, $cm, false, true);
 require_sesskey();
 
 $context = context_module::instance($cm->id);
-if (!has_capability('mod/mylkpd:submit', $context, null, false)) {
-    throw new required_capability_exception($context, 'mod/mylkpd:submit', 'nopermissions', '');
-}
 $mylkpd = $DB->get_record('mylkpd', ['id' => $cm->instance], '*', MUST_EXIST);
 
-echo json_encode(mylkpd_store_answer_image($mylkpd, $cm, $context, (int) $USER->id, $_FILES['image'] ?? null));
+// A teacher annotating a student's (or group's) worksheet from the grading page.
+$targetuser = optional_param('targetuser', 0, PARAM_INT);
+$targetgroup = optional_param('targetgroup', 0, PARAM_INT);
+$teacherfor = null;
+if ($targetuser || $targetgroup) {
+    require_capability('mod/mylkpd:grade', $context);
+    $teacherfor = mylkpd_teacher_target($mylkpd, $targetuser, $targetgroup);
+    if ($teacherfor['groupid'] && groups_get_group($teacherfor['groupid'])->courseid != $course->id) {
+        throw new moodle_exception('invalidgroupid');
+    }
+    if ($teacherfor['userid'] && !is_enrolled($context, $teacherfor['userid'], 'mod/mylkpd:submit')) {
+        throw new moodle_exception('invaliduser');
+    }
+} else if (!has_capability('mod/mylkpd:submit', $context, null, false)) {
+    throw new required_capability_exception($context, 'mod/mylkpd:submit', 'nopermissions', '');
+}
+
+echo json_encode(mylkpd_store_answer_image($mylkpd, $cm, $context, (int) $USER->id, $_FILES['image'] ?? null, $teacherfor));

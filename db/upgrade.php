@@ -5,6 +5,7 @@
  * Upgrade steps for mod_mylkpd.
  *
  * @package    mod_mylkpd
+ * @copyright  2026 Zalira
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
@@ -72,6 +73,73 @@ function xmldb_mylkpd_upgrade($oldversion) {
             $dbman->add_field($table, $field);
         }
         upgrade_mod_savepoint(true, 2026110500, 'mylkpd');
+    }
+
+    if ($oldversion < 2026111800) {
+        $table = new xmldb_table('mylkpd');
+        $field = new xmldb_field('aienabled', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '0', 'allowresubmit');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        $table = new xmldb_table('mylkpd_submissions');
+        $fields = [
+            new xmldb_field('airesult', XMLDB_TYPE_TEXT, null, null, null, null, null, 'revision'),
+            new xmldb_field('aitime', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0', 'airesult'),
+        ];
+        foreach ($fields as $field) {
+            if (!$dbman->field_exists($table, $field)) {
+                $dbman->add_field($table, $field);
+            }
+        }
+
+        $table = new xmldb_table('mylkpd_questions');
+        if (!$dbman->table_exists($table)) {
+            $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+            $table->add_field('mylkpdid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+            $table->add_field('sortorder', XMLDB_TYPE_INTEGER, '5', null, XMLDB_NOTNULL, null, '0');
+            $table->add_field('label', XMLDB_TYPE_CHAR, '30', null, null, null, null);
+            $table->add_field('question', XMLDB_TYPE_TEXT, null, null, null, null, null);
+            $table->add_field('answerkey', XMLDB_TYPE_TEXT, null, null, null, null, null);
+            $table->add_field('keypoints', XMLDB_TYPE_TEXT, null, null, null, null, null);
+            $table->add_field('maxscore', XMLDB_TYPE_NUMBER, '10, 2', null, XMLDB_NOTNULL, null, '10');
+            $table->add_field('anchor', XMLDB_TYPE_TEXT, null, null, null, null, null);
+            $table->add_field('timemodified', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+            $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+            $table->add_key('mylkpdid', XMLDB_KEY_FOREIGN, ['mylkpdid'], 'mylkpd', ['id']);
+            $dbman->create_table($table);
+        }
+        upgrade_mod_savepoint(true, 2026111800, 'mylkpd');
+    }
+
+    if ($oldversion < 2026111803) {
+        $table = new xmldb_table('mylkpd');
+        $fields = [
+            new xmldb_field('timeopen', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0', 'aienabled'),
+            new xmldb_field('duedate', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0', 'timeopen'),
+            new xmldb_field('cutoffdate', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0', 'duedate'),
+            new xmldb_field('latepenalty', XMLDB_TYPE_NUMBER, '10, 2', null, XMLDB_NOTNULL, null, '0', 'cutoffdate'),
+            new xmldb_field('latepenaltymode', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '0', 'latepenalty'),
+            new xmldb_field('teamsubmitmode', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '0', 'latepenaltymode'),
+        ];
+        foreach ($fields as $field) {
+            if (!$dbman->field_exists($table, $field)) {
+                $dbman->add_field($table, $field);
+            }
+        }
+        $table = new xmldb_table('mylkpd_submissions');
+        $fields = [
+            new xmldb_field('timesubmitted', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0', 'revision'),
+            new xmldb_field('submittedby', XMLDB_TYPE_TEXT, null, null, null, null, null, 'timesubmitted'),
+        ];
+        foreach ($fields as $field) {
+            if (!$dbman->field_exists($table, $field)) {
+                $dbman->add_field($table, $field);
+            }
+        }
+        // Work submitted before this version: use its last change as the submission time.
+        $DB->execute('UPDATE {mylkpd_submissions} SET timesubmitted = timemodified WHERE status = 1 AND timesubmitted = 0');
+        upgrade_mod_savepoint(true, 2026111803, 'mylkpd');
     }
 
     return true;

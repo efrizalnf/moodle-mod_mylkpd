@@ -5,6 +5,7 @@
  * Receives an image a student adds to the worksheet and stores it with their (or their group's) submission.
  *
  * @package    mod_mylkpd
+ * @copyright  2026 Zalira
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 

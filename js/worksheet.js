@@ -9,6 +9,7 @@
  * who is online, and locks a paragraph while a group mate is typing in it.
  *
  * @package    mod_mylkpd
+ * @copyright  2026 Zalira
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 var MyLKPD = (function() {
@@ -353,6 +354,25 @@ var MyLKPD = (function() {
             return nodes.length > 0;
         }
 
+        var ALIGNS = ['left', 'center', 'right', 'justify'];
+
+        /**
+         * What is stored for a paragraph: its alignment and its content, as one comparable string.
+         *
+         * @param {HTMLElement} p
+         * @return {String}
+         */
+        function blockState(p) {
+            return (p.getAttribute('data-mylkpd-textalign') || '') + '\u0001' + serializeBlock(p);
+        }
+
+        function setBlockAlign(p, align) {
+            if (ALIGNS.indexOf(align) >= 0) {
+                p.setAttribute('data-mylkpd-textalign', align);
+                p.style.textAlign = align;
+            }
+        }
+
         /**
          * Turns \(TeX\) text inside a paragraph into rendered equation chips; makes links open in a new tab.
          *
@@ -459,10 +479,14 @@ var MyLKPD = (function() {
             });
             Object.keys(touched).forEach(function(id) {
                 var el = blockEls[id];
-                var html = el ? serializeBlock(el) : null;
-                if (el && html !== shadowBlocks[id]) {
-                    ops.push({op: 'put', kind: 'block', id: id, html: html});
-                    shadowBlocks[id] = html;
+                var state = el ? blockState(el) : null;
+                if (el && state !== shadowBlocks[id]) {
+                    var op = {op: 'put', kind: 'block', id: id, html: serializeBlock(el)};
+                    if (el.getAttribute('data-mylkpd-textalign')) {
+                        op.align = el.getAttribute('data-mylkpd-textalign');
+                    }
+                    ops.push(op);
+                    shadowBlocks[id] = state;
                 }
                 delete touched[id];
             });
@@ -547,7 +571,7 @@ var MyLKPD = (function() {
                 if (ops.length || (stateEl && stateEl.classList.contains('mylkpd-state-saveerror'))) {
                     setState('saved');
                 }
-                if (res.status === 1 && !isTeacher) {
+                if ((res.status === 1 || res.closed) && !isTeacher) {
                     // Someone (a group mate) submitted: reload to show the locked worksheet.
                     window.removeEventListener('beforeunload', warnUnsaved);
                     window.location.reload();
@@ -606,14 +630,15 @@ var MyLKPD = (function() {
                 var b = res.blocks[id];
                 var el = blockEls[id];
                 if (!el || el === document.activeElement || touched[id] || inOutbox('block', id) ||
-                        serializeBlock(el) !== shadowBlocks[id]) {
+                        blockState(el) !== shadowBlocks[id]) {
                     return;
                 }
                 if (b.html !== undefined && b.html !== serializeBlock(el)) {
                     el.innerHTML = b.html;
                     hydrateBlock(el);
                 }
-                shadowBlocks[id] = serializeBlock(el);
+                setBlockAlign(el, b.align);
+                shadowBlocks[id] = blockState(el);
                 markEdited(el, b.by, b.teacher);
             });
             if (res.presence) {
@@ -857,6 +882,9 @@ var MyLKPD = (function() {
             ta.style.borderColor = item.color;
             ta.setAttribute('aria-label', cfg.strings.answer);
             ta.dir = 'auto'; // Arabic answers are written right to left.
+            if (ALIGNS.indexOf(item.align) >= 0) {
+                ta.style.textAlign = item.align;
+            }
             if (item.by && memberName(item.by)) {
                 el.title = cfg.strings.editedby.replace('{name}', memberName(item.by));
             }
@@ -1424,7 +1452,10 @@ var MyLKPD = (function() {
                     markEdited(p, saved[id].by, saved[id].teacher);
                 }
                 hydrateBlock(p);
-                shadowBlocks[id] = serializeBlock(p);
+                if (saved[id]) {
+                    setBlockAlign(p, saved[id].align);
+                }
+                shadowBlocks[id] = blockState(p);
                 if (!readonly) {
                     makeEditable(p, id);
                 }
@@ -2028,7 +2059,73 @@ var MyLKPD = (function() {
             }
         }
 
+        /**
+         * Current alignment of a paragraph or text box (from its own setting or the Word document).
+         *
+         * @param {HTMLElement} el
+         * @return {String}
+         */
+        function currentAlign(el) {
+            var a = window.getComputedStyle(el).textAlign;
+            if (a === 'start' || a === '-webkit-left' || a === 'auto') {
+                return el.dir === 'rtl' || window.getComputedStyle(el).direction === 'rtl' ? 'right' : 'left';
+            }
+            if (a === 'end') {
+                return 'right';
+            }
+            return ALIGNS.indexOf(a) >= 0 ? a : 'left';
+        }
+
+        function updateAlignButtons() {
+            var target = isTarget(lastTarget) ? lastTarget : null;
+            var active = target ? currentAlign(target) : '';
+            Array.prototype.forEach.call(document.querySelectorAll('[data-mylkpd-align]'), function(b) {
+                var on = b.getAttribute('data-mylkpd-align') === active;
+                b.classList.toggle('active', on);
+                b.setAttribute('aria-pressed', on ? 'true' : 'false');
+            });
+        }
+
+        /**
+         * Aligns the paragraph (or text box) the student is typing in.
+         *
+         * @param {String} align left|center|right|justify
+         */
+        function applyAlign(align) {
+            if (!isTarget(lastTarget)) {
+                flashHint(cfg.strings.needfocus);
+                return;
+            }
+            var el = lastTarget;
+            if (el.tagName === 'TEXTAREA') {
+                var item = owners.get(closestItem(el));
+                if (!item || !canEdit(item)) {
+                    return;
+                }
+                recordUndo([{id: item.id, before: copy(item)}]);
+                item.align = align;
+                el.style.textAlign = align;
+                claim(item);
+                changed();
+            } else {
+                var id = el.getAttribute('data-mylkpd-block');
+                setBlockAlign(el, align);
+                touched[id] = true;
+                markEdited(el, cfg.userid, isTeacher);
+                scheduleSave();
+            }
+            el.focus();
+            updateAlignButtons();
+        }
+
         function setupInsertTools() {
+            Array.prototype.forEach.call(document.querySelectorAll('[data-mylkpd-align]'), function(b) {
+                keepFocus(b);
+                b.addEventListener('click', function() {
+                    applyAlign(b.getAttribute('data-mylkpd-align'));
+                });
+            });
+            container.addEventListener('focusin', updateAlignButtons);
             Array.prototype.forEach.call(document.querySelectorAll('[data-mylkpd-insert]'), function(b) {
                 keepFocus(b);
                 b.addEventListener('click', function() {
@@ -2189,6 +2286,179 @@ var MyLKPD = (function() {
                 });
             }
             fileInput.click();
+        }
+
+        // ------------------------------------------------ Answer areas (answer key editor for AI checking).
+
+        var anchorMarks = [];
+
+        function pageOfElement(el) {
+            var section = el.closest ? el.closest('section.docx') : null;
+            var num = null;
+            Object.keys(pages).forEach(function(n) {
+                if (section && pages[n].layer.parentNode === section) {
+                    num = parseInt(n, 10);
+                }
+            });
+            return num;
+        }
+
+        function relRect(el, num) {
+            var lr = pages[num].layer.getBoundingClientRect();
+            var r = el.getBoundingClientRect();
+            return {top: (r.top - lr.top) / lr.height * 100, bottom: (r.bottom - lr.top) / lr.height * 100};
+        }
+
+        /**
+         * Highlights the answer area of every question (paragraphs and boxes), labelled with its number.
+         *
+         * @param {Array} list [{label, area: {blocks, regions}, active}]
+         */
+        function showAnchors(list) {
+            anchorMarks.forEach(function(el) {
+                if (el.classList.contains('mylkpd-anchor-rect')) {
+                    el.parentNode.removeChild(el);
+                } else {
+                    el.classList.remove('mylkpd-anchor-block', 'mylkpd-anchor-active', 'mylkpd-verdict-right',
+                        'mylkpd-verdict-partial', 'mylkpd-verdict-wrong', 'mylkpd-verdict-unknown');
+                    el.removeAttribute('data-mylkpd-anchor');
+                }
+            });
+            anchorMarks = [];
+            (list || []).forEach(function(q) {
+                var area = q.area || {};
+                (area.blocks || []).forEach(function(id) {
+                    var el = blockEls[id];
+                    if (el) {
+                        el.classList.add('mylkpd-anchor-block');
+                        el.classList.toggle('mylkpd-anchor-active', !!q.active);
+                        if (q.verdict) {
+                            el.classList.add('mylkpd-verdict-' + q.verdict);
+                        }
+                        el.setAttribute('data-mylkpd-anchor', q.label);
+                        anchorMarks.push(el);
+                    }
+                });
+                (area.regions || []).forEach(function(r) {
+                    var page = pages[r.page];
+                    if (!page) {
+                        return;
+                    }
+                    var box = document.createElement('div');
+                    box.className = 'mylkpd-anchor-rect' + (q.active ? ' mylkpd-anchor-active' : '') +
+                        (q.verdict ? ' mylkpd-verdict-' + q.verdict : '');
+                    box.style.left = r.x + '%';
+                    box.style.top = r.y + '%';
+                    box.style.width = r.w + '%';
+                    box.style.height = r.h + '%';
+                    box.setAttribute('data-mylkpd-anchor', q.label);
+                    page.html.appendChild(box);
+                    anchorMarks.push(box);
+                });
+            });
+        }
+
+        /**
+         * Finds numbered questions ("1. ...", "2) ...") in the Word worksheet and suggests their answer area:
+         * the paragraphs/cells up to the next question, and the same stretch of the page as a box.
+         *
+         * @return {Array} [{label, question, blocks, original, region}]
+         */
+        function detectQuestions() {
+            var ids = Object.keys(blockEls).sort(function(a, b) {
+                return a - b;
+            });
+            var found = [];
+            ids.forEach(function(id) {
+                var el = blockEls[id];
+                var m = /^\s*(?:soal|no\.?|nomor)?\s*(\d{1,2})\s*[.):]\s*(\S[\s\S]{3,})$/i.exec(el.textContent.replace(/\s+/g, ' '));
+                if (m && !el.closest('td, th')) {
+                    found.push({label: m[1], question: m[2].trim(), id: id});
+                }
+            });
+            return found.map(function(q, i) {
+                var next = found[i + 1];
+                var start = ids.indexOf(q.id);
+                var end = next ? ids.indexOf(next.id) : Math.min(ids.length, start + 11);
+                var blocks = ids.slice(start + 1, end).slice(0, 10);
+                var original = {};
+                blocks.forEach(function(id) {
+                    original[id] = blockEls[id].textContent;
+                });
+                var region = null;
+                var num = pageOfElement(blockEls[q.id]);
+                if (num) {
+                    var top = relRect(blockEls[q.id], num).bottom;
+                    var bottom = (next && pageOfElement(blockEls[next.id]) === num) ? relRect(blockEls[next.id], num).top : Math.min(98, top + 18);
+                    if (bottom - top >= 2) {
+                        region = {page: num, x: 5, y: clamp(top), w: 90, h: clamp(bottom - top)};
+                    }
+                }
+                return {label: q.label, question: q.question, blocks: blocks, original: original, region: region};
+            });
+        }
+
+        function emit(name, detail) {
+            document.dispatchEvent(new CustomEvent('mylkpd:' + name, {detail: detail}));
+        }
+
+        /**
+         * Click a paragraph/cell to add it to the active question's area, or drag to draw a box on the page.
+         */
+        function bindAnchorEditor() {
+            container.classList.add('mylkpd-anchoring');
+            Object.keys(pages).forEach(function(n) {
+                var num = parseInt(n, 10);
+                var layer = pages[n].layer;
+                var start = null;
+                var draft = null;
+                layer.addEventListener('pointerdown', function(e) {
+                    if (e.button !== 0) {
+                        return;
+                    }
+                    e.preventDefault();
+                    start = {p: pointFrom(layer, e), cx: e.clientX, cy: e.clientY};
+                    layer.setPointerCapture(e.pointerId);
+                });
+                layer.addEventListener('pointermove', function(e) {
+                    if (!start || (Math.abs(e.clientX - start.cx) + Math.abs(e.clientY - start.cy) < 6 && !draft)) {
+                        return;
+                    }
+                    var p = pointFrom(layer, e);
+                    if (!draft) {
+                        draft = document.createElement('div');
+                        draft.className = 'mylkpd-anchor-rect mylkpd-anchor-draft';
+                        pages[n].html.appendChild(draft);
+                    }
+                    draft.style.left = Math.min(p.x, start.p.x) + '%';
+                    draft.style.top = Math.min(p.y, start.p.y) + '%';
+                    draft.style.width = Math.abs(p.x - start.p.x) + '%';
+                    draft.style.height = Math.abs(p.y - start.p.y) + '%';
+                });
+                layer.addEventListener('pointerup', function(e) {
+                    if (!start) {
+                        return;
+                    }
+                    var p = pointFrom(layer, e);
+                    if (draft) {
+                        draft.parentNode.removeChild(draft);
+                        draft = null;
+                        emit('anchorrect', {page: num, x: Math.min(p.x, start.p.x), y: Math.min(p.y, start.p.y),
+                            w: clamp(Math.abs(p.x - start.p.x)), h: clamp(Math.abs(p.y - start.p.y))});
+                    } else {
+                        // A click: find the paragraph or table cell under the pointer.
+                        var under = document.elementsFromPoint(e.clientX, e.clientY);
+                        for (var i = 0; i < under.length; i++) {
+                            var block = under[i].closest && under[i].closest('[data-mylkpd-block]');
+                            if (block) {
+                                emit('anchorblock', {id: block.getAttribute('data-mylkpd-block'), text: block.textContent});
+                                break;
+                            }
+                        }
+                    }
+                    start = null;
+                });
+            });
         }
 
         // ------------------------------------------------ Toolbar and buttons.
@@ -2465,6 +2735,12 @@ var MyLKPD = (function() {
             return cfg.mode === 'docx' ? renderDocx() : renderPdf(width0);
         }).then(function() {
             rebuild();
+            if (cfg.anchorEditor) {
+                bindAnchorEditor();
+            }
+            MyLKPD.current = {showAnchors: showAnchors, detectQuestions: detectQuestions, canType: canType,
+                workmode: cfg.workmode};
+            emit('ready', MyLKPD.current);
             if (cfg.collab) {
                 flush(); // Announce presence and fetch anything newer than the page.
             }

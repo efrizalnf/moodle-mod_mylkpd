@@ -1,4 +1,4 @@
-/* mod_mylkpd */
+/* mod_mylkpd — MyLKPD by Zalira */
 
 /* Editing panel: one sticky card, tool groups separated by thin dividers. */
 .path-mod-mylkpd .mylkpd-toolbar {
@@ -8,7 +8,7 @@
     display: flex;
     flex-direction: column;
     gap: .35rem;
-    max-width: 1000px;
+    max-width: 1100px; /* A little wider than the page, so each row of tools fits on one line. */
     margin: 0 auto 1rem;
     padding: .45rem .6rem;
     background: #fff;
@@ -1048,4 +1048,453 @@
     background: rgba(255, 255, 255, .9);
     border-radius: 2px;
     pointer-events: auto;
+}
+
+/* Read-only view: clicks reach the document (links), annotations stay readable (notes can be opened). */
+.path-mod-mylkpd .mylkpd-mode-view .mylkpd-layer {
+    pointer-events: none;
+}
+
+/* Answer key editor: pick paragraphs / draw boxes */
+.path-mod-mylkpd .mylkpd-anchoring .mylkpd-layer {
+    pointer-events: auto;
+    cursor: crosshair;
+}
+
+.path-mod-mylkpd .mylkpd-anchor-block {
+    position: relative;
+    background: rgba(255, 193, 7, .18);
+    box-shadow: inset 3px 0 0 #f59f00;
+}
+
+.path-mod-mylkpd .mylkpd-anchor-block.mylkpd-anchor-active {
+    background: rgba(13, 110, 253, .16);
+    box-shadow: inset 3px 0 0 #0d6efd, 0 0 0 1px #0d6efd;
+}
+
+.path-mod-mylkpd .mylkpd-anchor-block::after,
+.path-mod-mylkpd .mylkpd-anchor-rect::after {
+    content: attr(data-mylkpd-anchor);
+    position: absolute;
+    top: 0;
+    left: -2.1em;
+    min-width: 1.6em;
+    padding: 0 .3em;
+    font: 700 11px/1.6 sans-serif;
+    color: #fff;
+    text-align: center;
+    background: #f59f00;
+    border-radius: 3px;
+}
+
+.path-mod-mylkpd .mylkpd-anchor-active::after {
+    background: #0d6efd;
+}
+
+.path-mod-mylkpd .mylkpd-anchor-rect {
+    position: absolute;
+    box-sizing: border-box;
+    background: rgba(255, 193, 7, .14);
+    border: 2px dashed #f59f00;
+    pointer-events: none;
+}
+
+.path-mod-mylkpd .mylkpd-anchor-rect.mylkpd-anchor-active,
+.path-mod-mylkpd .mylkpd-anchor-draft {
+    background: rgba(13, 110, 253, .12);
+    border-color: #0d6efd;
+}
+
+.path-mod-mylkpd .mylkpd-anchor-rect::after {
+    left: 0;
+    top: -1.7em;
+}
+
+/* Credit: MyLKPD is made by Zalira */
+.path-mod-mylkpd .mylkpd-credit {
+    max-width: 1000px;
+    margin: .5rem auto 0;
+    font-size: .75rem;
+    color: #6a737b;
+    text-align: right;
+    letter-spacing: .02em;
+}
+
+.path-mod-mylkpd .mylkpd-credit::before {
+    content: "\25C6\00A0";
+    color: #0f6cbf;
+}
+
+.mylkpd-credit-admin {
+    padding: .5rem .75rem;
+    font-weight: 600;
+    background: #f1f6fb;
+    border-left: 4px solid #0f6cbf;
+    border-radius: .3rem;
+}
+
+/* Answer key editor */
+.path-mod-mylkpd .mylkpd-keys-help {
+    max-width: 1100px;
+    margin-bottom: 1rem;
+    padding: .6rem .8rem;
+    background: #f8f9fa;
+    border-radius: .4rem;
+}
+
+.path-mod-mylkpd .mylkpd-keys-layout {
+    display: grid;
+    grid-template-columns: minmax(320px, 420px) 1fr;
+    gap: 1rem;
+    align-items: start;
+}
+
+@media (max-width: 991.98px) {
+    .path-mod-mylkpd .mylkpd-keys-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+.path-mod-mylkpd .mylkpd-keys-form {
+    position: sticky;
+    top: calc(var(--mylkpd-sticky-top, 0px) + .5rem);
+    max-height: calc(100vh - 6rem);
+    overflow-y: auto;
+    padding-right: .25rem;
+}
+
+.path-mod-mylkpd .mylkpd-keys-tools,
+.path-mod-mylkpd .mylkpd-keys-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .4rem;
+    margin-bottom: .75rem;
+}
+
+.path-mod-mylkpd .mylkpd-keyrow {
+    margin-bottom: .75rem;
+    padding: .6rem .7rem;
+    background: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: .45rem;
+}
+
+.path-mod-mylkpd .mylkpd-keyrow-active {
+    border-color: #0d6efd;
+    box-shadow: 0 0 0 2px rgba(13, 110, 253, .25);
+}
+
+.path-mod-mylkpd .mylkpd-keyrow-head {
+    display: flex;
+    align-items: flex-end;
+    gap: .5rem;
+}
+
+.path-mod-mylkpd .mylkpd-keyrow-head .mylkpd-keyfield {
+    width: 6.5rem;
+}
+
+.path-mod-mylkpd .mylkpd-keyrow-remove {
+    margin-left: auto;
+}
+
+.path-mod-mylkpd .mylkpd-keyfield {
+    display: block;
+    margin-bottom: .4rem;
+    font-size: .85rem;
+}
+
+.path-mod-mylkpd .mylkpd-keyfield > span {
+    display: block;
+    margin-bottom: .1rem;
+    font-weight: 600;
+}
+
+.path-mod-mylkpd .mylkpd-keyrow-area {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .35rem;
+    font-size: .85rem;
+}
+
+/* AI check panel on the grading page */
+.path-mod-mylkpd .mylkpd-aibox {
+    max-width: 1000px;
+    margin: 1rem auto;
+}
+
+.path-mod-mylkpd .mylkpd-ai-tools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .5rem;
+    margin-bottom: .5rem;
+}
+
+.path-mod-mylkpd .mylkpd-ai-tablewrap {
+    overflow-x: auto;
+}
+
+.path-mod-mylkpd .mylkpd-ai-table td {
+    vertical-align: top;
+}
+
+.path-mod-mylkpd .mylkpd-ai-answer {
+    max-width: 280px;
+    font-size: .85rem;
+    color: #495057;
+    white-space: pre-wrap;
+}
+
+.path-mod-mylkpd .mylkpd-ai-score {
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.path-mod-mylkpd .mylkpd-ai-missing {
+    margin-top: .25rem;
+    font-size: .8rem;
+    color: #b02a37;
+}
+
+.path-mod-mylkpd .mylkpd-ai-total {
+    margin: .4rem 0 .2rem;
+}
+
+/* AI result: right / partly right / wrong */
+.mylkpd-badge {
+    display: inline-block;
+    padding: .1rem .45rem;
+    font-size: .8rem;
+    font-weight: 600;
+    white-space: nowrap;
+    border-radius: 1rem;
+}
+
+.mylkpd-badge-right {
+    color: #0f5132;
+    background: #d1e7dd;
+}
+
+.mylkpd-badge-partial {
+    color: #664d03;
+    background: #fff3cd;
+}
+
+.mylkpd-badge-wrong {
+    color: #842029;
+    background: #f8d7da;
+}
+
+.mylkpd-badge-unknown {
+    color: #41464b;
+    background: #e2e3e5;
+}
+
+.path-mod-mylkpd .mylkpd-ai-warn {
+    margin-top: .2rem;
+    font-size: .78rem;
+    font-weight: 600;
+    color: #b02a37;
+}
+
+/* Marks on the worksheet at each answer area */
+.path-mod-mylkpd .mylkpd-anchor-block.mylkpd-verdict-right,
+.path-mod-mylkpd .mylkpd-anchor-rect.mylkpd-verdict-right {
+    background: rgba(25, 135, 84, .12);
+    box-shadow: inset 3px 0 0 #198754;
+    border-color: #198754;
+}
+
+.path-mod-mylkpd .mylkpd-anchor-block.mylkpd-verdict-partial,
+.path-mod-mylkpd .mylkpd-anchor-rect.mylkpd-verdict-partial {
+    background: rgba(255, 193, 7, .16);
+    box-shadow: inset 3px 0 0 #e0a800;
+    border-color: #e0a800;
+}
+
+.path-mod-mylkpd .mylkpd-anchor-block.mylkpd-verdict-wrong,
+.path-mod-mylkpd .mylkpd-anchor-rect.mylkpd-verdict-wrong {
+    background: rgba(220, 53, 69, .1);
+    box-shadow: inset 3px 0 0 #dc3545;
+    border-color: #dc3545;
+}
+
+.path-mod-mylkpd .mylkpd-verdict-right::after {
+    background: #198754;
+}
+
+.path-mod-mylkpd .mylkpd-verdict-partial::after {
+    color: #3d2e00;
+    background: #ffc107;
+}
+
+.path-mod-mylkpd .mylkpd-verdict-wrong::after {
+    background: #dc3545;
+}
+
+/* Verdict labels sit in the right margin so they do not cover the answer. */
+.path-mod-mylkpd .mylkpd-anchor-block[class*="mylkpd-verdict-"]::after {
+    left: calc(100% + 6px);
+    white-space: nowrap;
+}
+
+.path-mod-mylkpd td .mylkpd-anchor-block[class*="mylkpd-verdict-"]::after {
+    left: auto;
+    right: 0;
+    transform: translateY(-80%);
+}
+
+.mylkpd-aitest-reply {
+    max-height: 320px;
+    overflow: auto;
+    padding: .6rem;
+    font-size: .8rem;
+    white-space: pre-wrap;
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: .3rem;
+}
+
+/* AI connection status (plugin settings) */
+.mylkpd-aistatus {
+    padding: .6rem .8rem;
+    border: 1px solid #dee2e6;
+    border-left: 4px solid #adb5bd;
+    border-radius: .4rem;
+    background: #f8f9fa;
+}
+
+.mylkpd-aistatus-line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .4rem;
+}
+
+.mylkpd-aistatus-dot {
+    display: inline-block;
+    width: .8rem;
+    height: .8rem;
+    border-radius: 50%;
+    background: #adb5bd;
+}
+
+.mylkpd-aistatus-ok {
+    border-left-color: #198754;
+    background: #f0f9f4;
+}
+
+.mylkpd-aistatus-ok .mylkpd-aistatus-dot {
+    background: #198754;
+    box-shadow: 0 0 0 3px rgba(25, 135, 84, .2);
+}
+
+.mylkpd-aistatus-fail {
+    border-left-color: #dc3545;
+    background: #fdf3f4;
+}
+
+.mylkpd-aistatus-fail .mylkpd-aistatus-dot {
+    background: #dc3545;
+    box-shadow: 0 0 0 3px rgba(220, 53, 69, .2);
+}
+
+.mylkpd-aistatus-checking .mylkpd-aistatus-dot {
+    background: #0d6efd;
+    animation: mylkpd-pulse 1s infinite alternate;
+}
+
+@keyframes mylkpd-pulse {
+    from {
+        opacity: .3;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+.mylkpd-aistatus-message {
+    margin: .3rem 0;
+    color: #b02a37;
+    word-break: break-word;
+}
+
+.mylkpd-aistatus-message:empty {
+    display: none;
+}
+
+.mylkpd-aistatus-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .6rem;
+    margin: .4rem 0 .2rem;
+}
+
+/* Schedule and lateness */
+.path-mod-mylkpd .mylkpd-schedule {
+    margin-top: .45rem;
+}
+
+.path-mod-mylkpd .mylkpd-timeleft {
+    color: #0f5132;
+    font-weight: 600;
+}
+
+.path-mod-mylkpd .mylkpd-overdue {
+    color: #b02a37;
+    font-weight: 600;
+}
+
+.path-mod-mylkpd .mylkpd-latewarning {
+    margin-top: .5rem;
+    padding: .4rem .6rem;
+    font-size: .875rem;
+    color: #842029;
+    background: #f8d7da;
+    border-radius: .3rem;
+}
+
+/* Group work where every member must submit */
+.path-mod-mylkpd .mylkpd-teamprogress {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .3rem;
+    margin-top: .45rem;
+}
+
+.path-mod-mylkpd .mylkpd-teamchip {
+    padding: .05rem .5rem;
+    font-size: .8rem;
+    border-radius: 1rem;
+}
+
+.path-mod-mylkpd .mylkpd-teamchip-done {
+    color: #0f5132;
+    background: #d1e7dd;
+}
+
+.path-mod-mylkpd .mylkpd-teamchip-wait {
+    color: #495057;
+    background: #e9ecef;
+}
+
+.path-mod-mylkpd .mylkpd-confirmed {
+    color: #0f5132;
+    font-weight: 600;
+}
+
+/* Paragraph alignment buttons */
+.path-mod-mylkpd .mylkpd-svgicon {
+    display: block;
+}
+
+.path-mod-mylkpd .mylkpd-toolbar [data-mylkpd-align].active {
+    color: #fff;
+    background: #0f6cbf;
+    border-color: #0f6cbf;
 }

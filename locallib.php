@@ -5,6 +5,7 @@
  * Internal helpers for mod_mylkpd.
  *
  * @package    mod_mylkpd
+ * @copyright  2026 Zalira
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
@@ -161,6 +162,9 @@ function mylkpd_clean_item($a): ?array {
                 return null;
             }
             $item += ['x' => $pct($a['x'] ?? 0), 'y' => $pct($a['y'] ?? 0), 'text' => $text];
+            if (in_array($a['align'] ?? '', ['left', 'center', 'right', 'justify'], true)) {
+                $item['align'] = $a['align'];
+            }
             break;
         case 'check':
         case 'cross':
@@ -426,8 +430,9 @@ function mylkpd_sync(stdClass $mylkpd, $cm, int $userid, int $sincerev, array $o
         $data = mylkpd_decode_data($sub->answers);
         $changed = false;
 
-        // Teachers may annotate at any time; students only until they submit.
-        if ($ops && ($isteacher || $sub->status != MYLKPD_STATUS_SUBMITTED)) {
+        // Teachers may annotate at any time; students only until they submit, and only while it is open.
+        $studentcanwork = $sub->status != MYLKPD_STATUS_SUBMITTED && mylkpd_can_work($mylkpd);
+        if ($ops && ($isteacher || $studentcanwork)) {
             $live = count(array_filter($data['items'], function($i) {
                 return empty($i['deleted']);
             }));
@@ -476,6 +481,10 @@ function mylkpd_sync(stdClass $mylkpd, $cm, int $userid, int $sincerev, array $o
                 } else if ($kind === 'block' && $action === 'put' && ctype_digit($id) && (int) $id < 100000) {
                     $html = purify_html(core_text::substr((string) ($op['html'] ?? ''), 0, 20000));
                     $data['blocks'][$id] = ['html' => $html, 'v' => ++$sub->revision, 'by' => $userid];
+                    // Paragraph alignment is kept beside the content (HTMLPurifier would drop it inside).
+                    if (in_array($op['align'] ?? '', ['left', 'center', 'right', 'justify'], true)) {
+                        $data['blocks'][$id]['align'] = $op['align'];
+                    }
                     if ($isteacher) {
                         $data['blocks'][$id]['teacher'] = 1;
                     }
@@ -532,6 +541,7 @@ function mylkpd_sync(stdClass $mylkpd, $cm, int $userid, int $sincerev, array $o
     return [
         'rev' => (int) $sub->revision,
         'status' => (int) $sub->status,
+        'closed' => !$isteacher && !mylkpd_can_work($mylkpd),
         'items' => (object) $items,
         'blocks' => (object) $blocks,
         'presence' => $presence,
@@ -571,6 +581,9 @@ function mylkpd_store_answer_image(stdClass $mylkpd, $cm, context_module $contex
         return ['error' => get_string('nogroup', 'mod_mylkpd')];
     }
     $sub = mylkpd_target_submission($mylkpd, $cm, $userid, $teacherfor, true);
+    if (!$teacherfor && !mylkpd_can_work($mylkpd)) {
+        return ['error' => get_string(mylkpd_is_open($mylkpd) ? 'closedshort' : 'notopenshort', 'mod_mylkpd')];
+    }
     if (!$teacherfor && $sub->status == MYLKPD_STATUS_SUBMITTED) {
         return ['error' => get_string('alreadysubmitted', 'mod_mylkpd')];
     }
@@ -747,6 +760,141 @@ function mylkpd_grading_manage_url(context_module $context): moodle_url {
 }
 
 /**
+ * Whether AI essay checking can be used in this activity (site switch + activity switch).
+ *
+ * @param stdClass $mylkpd
+ * @return bool
+ */
+function mylkpd_ai_enabled(stdClass $mylkpd): bool {
+    return !empty($mylkpd->aienabled) && \mod_mylkpd\ai\client::site_enabled();
+}
+
+/**
+ * Validates an answer area sent from the answer-key editor.
+ *
+ * Format: {"blocks": ["12", ...], "original": {"12": "text before the student wrote"},
+ *          "regions": [{"page": 1, "x": 10, "y": 40, "w": 80, "h": 15}]} (percent of the page).
+ *
+ * @param mixed $raw JSON string or array
+ * @return array
+ */
+function mylkpd_clean_anchor($raw): array {
+    $a = is_array($raw) ? $raw : json_decode((string) $raw, true);
+    $out = ['blocks' => [], 'original' => [], 'regions' => []];
+    if (!is_array($a)) {
+        return $out;
+    }
+    foreach (array_slice((array) ($a['blocks'] ?? []), 0, 60) as $id) {
+        $id = (string) $id;
+        if (ctype_digit($id) && (int) $id < 100000 && !in_array($id, $out['blocks'], true)) {
+            $out['blocks'][] = $id;
+            $orig = $a['original'][$id] ?? '';
+            $out['original'][$id] = core_text::substr(clean_param(is_scalar($orig) ? (string) $orig : '', PARAM_TEXT), 0, 2000);
+        }
+    }
+    $pct = function($v): float {
+        return min(100, max(0, round(is_numeric($v) ? (float) $v : 0, 2)));
+    };
+    foreach (array_slice((array) ($a['regions'] ?? []), 0, 8) as $r) {
+        if (!is_array($r)) {
+            continue;
+        }
+        $region = ['page' => max(1, min(1000, (int) ($r['page'] ?? 1))), 'x' => $pct($r['x'] ?? 0),
+            'y' => $pct($r['y'] ?? 0), 'w' => $pct($r['w'] ?? 0), 'h' => $pct($r['h'] ?? 0)];
+        if ($region['w'] >= 1 && $region['h'] >= 1) {
+            $out['regions'][] = $region;
+        }
+    }
+    return $out;
+}
+
+/**
+ * Essay questions with answer keys, in order, each with its decoded answer area in ->area.
+ *
+ * @param stdClass $mylkpd
+ * @return array
+ */
+function mylkpd_get_questions(stdClass $mylkpd): array {
+    global $DB;
+    $questions = $DB->get_records('mylkpd_questions', ['mylkpdid' => $mylkpd->id], 'sortorder, id');
+    foreach ($questions as $q) {
+        $q->area = mylkpd_clean_anchor($q->anchor);
+    }
+    return $questions;
+}
+
+/**
+ * The "made by Zalira" credit shown under the worksheet.
+ *
+ * @return string HTML
+ */
+function mylkpd_credit(): string {
+    $info = core_plugin_manager::instance()->get_plugin_info('mod_mylkpd');
+    $release = ($info && !empty($info->release)) ? $info->release : '';
+    return html_writer::div(get_string('credit', 'mod_mylkpd', $release), 'mylkpd-credit',
+        ['data-mylkpd-credit' => 'zalira']);
+}
+
+/**
+ * Teacher's grade with the late penalty shown ("70 (80 − 10 late)"), or the plain grade.
+ *
+ * @param stdClass $mylkpd
+ * @param stdClass|null $submission
+ * @return string
+ */
+function mylkpd_display_final_grade(stdClass $mylkpd, ?stdClass $submission): string {
+    if (!$submission || $submission->grade === null || $submission->grade === '') {
+        return '-';
+    }
+    $penalty = mylkpd_late_penalty($mylkpd, $submission);
+    if ($penalty <= 0) {
+        return mylkpd_display_grade($mylkpd, $submission->grade);
+    }
+    return get_string('gradewithpenalty', 'mod_mylkpd', (object) [
+        'final' => mylkpd_display_grade($mylkpd, mylkpd_final_grade($mylkpd, $submission)),
+        'grade' => format_float($submission->grade, 2),
+        'penalty' => format_float($penalty, 2),
+    ]);
+}
+
+/**
+ * Group work where every member must submit: who has submitted (userid => time).
+ *
+ * @param stdClass|null $submission
+ * @return array
+ */
+function mylkpd_team_confirmations(?stdClass $submission): array {
+    $data = $submission ? json_decode((string) ($submission->submittedby ?? ''), true) : null;
+    return is_array($data) ? array_map('intval', $data) : [];
+}
+
+/**
+ * Whether every group member has to press Submit themselves.
+ *
+ * @param stdClass $mylkpd
+ * @return bool
+ */
+function mylkpd_requires_all_members(stdClass $mylkpd): bool {
+    return !empty($mylkpd->teamsubmission) && !empty($mylkpd->teamsubmitmode);
+}
+
+/**
+ * Members (who can submit) that have not submitted yet, when every member must submit.
+ *
+ * @param stdClass $mylkpd
+ * @param context_module $context
+ * @param stdClass $submission
+ * @return int[]
+ */
+function mylkpd_team_pending(stdClass $mylkpd, context_module $context, stdClass $submission): array {
+    if (!mylkpd_requires_all_members($mylkpd) || empty($submission->groupid)) {
+        return [];
+    }
+    $members = array_map('intval', array_keys(get_enrolled_users($context, 'mod/mylkpd:submit', $submission->groupid, 'u.id')));
+    return array_values(array_diff($members, array_keys(mylkpd_team_confirmations($submission))));
+}
+
+/**
  * Formats a grade for display.
  *
  * @param stdClass $mylkpd
@@ -797,7 +945,7 @@ function mylkpd_toolbar_button(string $attr, string $value, string $icon, string
 /**
  * Builds the editing toolbar (inspired by CKEditor): one sticky panel with grouped tools.
  *
- * Row 1: tools (type, move, draw...) | undo/redo.
+ * Row 1: tools (type, move, draw...) | alignment | undo/redo.
  * Row 2: text formatting (docx) | colour and thickness | inserts | help.
  * Then a message line and, for group work, who is online.
  *
@@ -854,6 +1002,27 @@ function mylkpd_render_toolbar(bool $cantype, string $defaulttool, string $teamb
             'aria-label' => $s('width'),
             'title' => $s('width'),
         ]);
+    $icon = function(array $widths, string $anchor): string {
+        // Four lines of different lengths, aligned like the text they stand for.
+        $lines = '';
+        foreach ($widths as $i => $w) {
+            $x = $anchor === 'right' ? 14 - $w : ($anchor === 'center' ? (14 - $w) / 2 : 1);
+            $lines .= '<rect x="' . $x . '" y="' . (2 + $i * 3.2) . '" width="' . $w . '" height="1.6" rx=".8"/>';
+        }
+        return '<svg class="mylkpd-svgicon" viewBox="0 0 15 15" width="15" height="15" fill="currentColor" aria-hidden="true">' .
+            $lines . '</svg>';
+    };
+    $aligns = [
+        'left' => $icon([13, 9, 13, 7], 'left'),
+        'center' => $icon([13, 9, 13, 7], 'center'),
+        'right' => $icon([13, 9, 13, 7], 'right'),
+        'justify' => $icon([13, 13, 13, 13], 'left'),
+    ];
+    $buttons = '';
+    foreach ($aligns as $align => $svg) {
+        $buttons .= mylkpd_toolbar_button('align', $align, $svg, $s('align' . $align), false);
+    }
+    $row1 .= $group($buttons, $s('alignment'), 'mylkpd-aligngroup');
     $row1 .= $group(
         mylkpd_toolbar_button('action', 'undo', '&#8630;', $s('undo') . ' (Ctrl+Z)', false) .
         mylkpd_toolbar_button('action', 'redo', '&#8631;', $s('redo') . ' (Ctrl+Y)', false),
@@ -903,14 +1072,28 @@ function mylkpd_render_toolbar(bool $cantype, string $defaulttool, string $teamb
  * @param stdClass|null $sub
  * @return string
  */
-function mylkpd_status_badge(?stdClass $sub): string {
+function mylkpd_status_badge(?stdClass $sub, ?stdClass $mylkpd = null, ?context_module $context = null): string {
     if (!$sub) {
         return html_writer::span(get_string('statusnotstarted', 'mod_mylkpd'), 'badge bg-light text-dark');
     }
     if ($sub->status == MYLKPD_STATUS_SUBMITTED) {
-        return html_writer::span(get_string('statussubmitted', 'mod_mylkpd'), 'badge bg-success');
+        $out = html_writer::span(get_string('statussubmitted', 'mod_mylkpd'), 'badge bg-success');
+        if ($mylkpd && ($late = mylkpd_late_seconds($mylkpd, $sub))) {
+            $out .= ' ' . html_writer::span(get_string('statuslate', 'mod_mylkpd', format_time($late)), 'badge bg-danger');
+        }
+        return $out;
     }
-    return html_writer::span(get_string('statusdraft', 'mod_mylkpd'), 'badge bg-warning text-dark');
+    $out = html_writer::span(get_string('statusdraft', 'mod_mylkpd'), 'badge bg-warning text-dark');
+    // Every member must submit: how many already have.
+    if ($mylkpd && $context && mylkpd_requires_all_members($mylkpd) && !empty($sub->groupid)) {
+        $done = count(mylkpd_team_confirmations($sub));
+        $total = $done + count(mylkpd_team_pending($mylkpd, $context, $sub));
+        if ($done) {
+            $out .= ' ' . html_writer::span(get_string('teamsubmitcount', 'mod_mylkpd', (object) ['done' => $done,
+                'total' => $total]), 'badge bg-info text-dark');
+        }
+    }
+    return $out;
 }
 
 /**
@@ -925,7 +1108,7 @@ function mylkpd_status_badge(?stdClass $sub): string {
  * @return array ['html' => string, 'ready' => bool]
  */
 function mylkpd_render_worksheet(stdClass $mylkpd, $cm, context_module $context, ?stdClass $submission,
-        bool $readonly, array $memberids = [], ?array $teacherfor = null): array {
+        bool $readonly, array $memberids = [], ?array $teacherfor = null, array $extracfg = []): array {
     global $PAGE, $OUTPUT, $USER;
 
     $doc = mylkpd_get_document($mylkpd, $context);
@@ -1024,6 +1207,7 @@ function mylkpd_render_worksheet(stdClass $mylkpd, $cm, context_module $context,
         ],
     ];
 
+    $config = $extracfg + $config;
     $PAGE->requires->js(new moodle_url('/mod/mylkpd/js/worksheet.js'));
     $PAGE->requires->js_init_code('MyLKPD.init(' . json_encode($config) . ');', true);
 
@@ -1045,6 +1229,7 @@ function mylkpd_render_worksheet(stdClass $mylkpd, $cm, context_module $context,
     }
     $classes = 'mylkpd-container' . ($cantype ? ' mylkpd-work-edit' : '') . ' mylkpd-mode-' . ($readonly ? 'view' : $defaulttool);
     $html .= html_writer::div('', $classes, ['id' => 'mylkpd-container']);
+    $html .= mylkpd_credit();
 
     return ['html' => $html, 'ready' => true];
 }

@@ -5,6 +5,7 @@
  * Lists all LKPD activities in a course.
  *
  * @package    mod_mylkpd
+ * @copyright  2026 Zalira
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 

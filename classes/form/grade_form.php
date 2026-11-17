@@ -11,6 +11,7 @@ require_once($CFG->libdir . '/formslib.php');
  * Grade and feedback form for one submission.
  *
  * @package    mod_mylkpd
+ * @copyright  2026 Zalira
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class grade_form extends \moodleform {

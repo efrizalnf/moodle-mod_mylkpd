@@ -5,6 +5,7 @@
  * Core API callbacks for mod_mylkpd.
  *
  * @package    mod_mylkpd
+ * @copyright  2026 Zalira
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
@@ -38,6 +39,86 @@ function mylkpd_supports($feature) {
         default:
             return null;
     }
+}
+
+/**
+ * Whether students can already start (the opening time has passed or none is set).
+ *
+ * @param stdClass $mylkpd
+ * @param int|null $now
+ * @return bool
+ */
+function mylkpd_is_open(stdClass $mylkpd, ?int $now = null): bool {
+    return empty($mylkpd->timeopen) || ($now ?? time()) >= (int) $mylkpd->timeopen;
+}
+
+/**
+ * Whether the activity is closed for students (past the cut-off time).
+ *
+ * @param stdClass $mylkpd
+ * @param int|null $now
+ * @return bool
+ */
+function mylkpd_is_closed(stdClass $mylkpd, ?int $now = null): bool {
+    return !empty($mylkpd->cutoffdate) && ($now ?? time()) > (int) $mylkpd->cutoffdate;
+}
+
+/**
+ * Whether students may work on and submit the worksheet right now.
+ *
+ * @param stdClass $mylkpd
+ * @param int|null $now
+ * @return bool
+ */
+function mylkpd_can_work(stdClass $mylkpd, ?int $now = null): bool {
+    return mylkpd_is_open($mylkpd, $now) && !mylkpd_is_closed($mylkpd, $now);
+}
+
+/**
+ * How many seconds after the deadline the work was submitted (0 = on time, no deadline, not submitted).
+ *
+ * @param stdClass $mylkpd
+ * @param stdClass|null $submission
+ * @return int
+ */
+function mylkpd_late_seconds(stdClass $mylkpd, ?stdClass $submission): int {
+    if (empty($mylkpd->duedate) || !$submission || empty($submission->timesubmitted)) {
+        return 0;
+    }
+    return max(0, (int) $submission->timesubmitted - (int) $mylkpd->duedate);
+}
+
+/**
+ * Points taken off for lateness: once, or for every started day after the deadline.
+ * Only for point grades (a scale cannot be reduced by points).
+ *
+ * @param stdClass $mylkpd
+ * @param stdClass|null $submission
+ * @return float
+ */
+function mylkpd_late_penalty(stdClass $mylkpd, ?stdClass $submission): float {
+    $late = mylkpd_late_seconds($mylkpd, $submission);
+    $points = (float) ($mylkpd->latepenalty ?? 0);
+    if (!$late || $points <= 0 || $mylkpd->grade <= 0) {
+        return 0.0;
+    }
+    $days = !empty($mylkpd->latepenaltymode) ? (int) ceil($late / DAYSECS) : 1;
+    return round($points * $days, 2);
+}
+
+/**
+ * Grade for the gradebook: the teacher's grade minus the late penalty, never below 0.
+ *
+ * @param stdClass $mylkpd
+ * @param stdClass $submission
+ * @return float|null
+ */
+function mylkpd_final_grade(stdClass $mylkpd, stdClass $submission): ?float {
+    if ($submission->grade === null || $submission->grade === '') {
+        return null;
+    }
+    $grade = (float) $submission->grade;
+    return $mylkpd->grade > 0 ? max(0.0, round($grade - mylkpd_late_penalty($mylkpd, $submission), 5)) : $grade;
 }
 
 /**
@@ -108,6 +189,7 @@ function mylkpd_add_instance($data, $mform = null) {
     $data->id = $DB->insert_record('mylkpd', $data);
     mylkpd_save_worksheet($data);
     mylkpd_grade_item_update($data);
+    mylkpd_refresh_instance_events($data, (int) $data->coursemodule);
     return $data->id;
 }
 
@@ -126,6 +208,7 @@ function mylkpd_update_instance($data, $mform = null) {
     mylkpd_save_worksheet($data);
     mylkpd_grade_item_update($data);
     mylkpd_update_grades($data);
+    mylkpd_refresh_instance_events($data, (int) $data->coursemodule);
     return true;
 }
 
@@ -143,6 +226,7 @@ function mylkpd_delete_instance($id) {
     $DB->delete_records_select('mylkpd_presence',
         'submissionid IN (SELECT id FROM {mylkpd_submissions} WHERE mylkpdid = ?)', [$mylkpd->id]);
     $DB->delete_records('mylkpd_submissions', ['mylkpdid' => $mylkpd->id]);
+    $DB->delete_records('mylkpd_questions', ['mylkpdid' => $mylkpd->id]);
     $DB->delete_records('mylkpd', ['id' => $mylkpd->id]);
     mylkpd_grade_item_delete($mylkpd);
     return true;
@@ -209,10 +293,19 @@ function mylkpd_update_grades($mylkpd, $userid = 0, $nullifnone = true) {
             if (!$uid || ($userid && $uid != $userid)) {
                 continue;
             }
+            // The gradebook gets the teacher's grade minus the late penalty, with a note in the feedback.
+            $penalty = mylkpd_late_penalty($mylkpd, $sub);
+            $feedback = (string) $sub->feedback;
+            if ($penalty > 0 && $sub->grade !== null) {
+                $feedback = trim($feedback . "\n\n" . get_string('latepenaltynote', 'mod_mylkpd', (object) [
+                    'penalty' => format_float($penalty, 2),
+                    'late' => format_time(mylkpd_late_seconds($mylkpd, $sub)),
+                ]));
+            }
             $grades[$uid] = (object) [
                 'userid' => $uid,
-                'rawgrade' => $sub->grade,
-                'feedback' => $sub->feedback,
+                'rawgrade' => mylkpd_final_grade($mylkpd, $sub),
+                'feedback' => $feedback,
                 'feedbackformat' => FORMAT_PLAIN,
                 'dategraded' => $sub->timegraded ?: null,
             ];
@@ -267,4 +360,135 @@ function mylkpd_pluginfile($course, $cm, $context, $filearea, $args, $forcedownl
         return false;
     }
     send_stored_file($file, DAYSECS, 0, $forcedownload, $options);
+}
+
+/**
+ * Creates, updates or removes the calendar events for opening, deadline and closing.
+ * The deadline is an "action" event, so it also appears on the students' Timeline.
+ *
+ * @param stdClass $mylkpd instance record (or form data with ->id)
+ * @param int $cmid
+ */
+function mylkpd_refresh_instance_events(stdClass $mylkpd, int $cmid): void {
+    global $CFG, $DB;
+    require_once($CFG->dirroot . '/calendar/lib.php');
+    $types = [
+        'open' => ['timeopen', CALENDAR_EVENT_TYPE_STANDARD, 'calendaropen'],
+        'due' => ['duedate', CALENDAR_EVENT_TYPE_ACTION, 'calendardue'],
+        'close' => ['cutoffdate', CALENDAR_EVENT_TYPE_STANDARD, 'calendarclose'],
+    ];
+    foreach ($types as $eventtype => [$field, $type, $label]) {
+        $time = (int) ($mylkpd->$field ?? 0);
+        $existing = $DB->get_record('event', ['modulename' => 'mylkpd', 'instance' => $mylkpd->id, 'eventtype' => $eventtype]);
+        if (!$time) {
+            if ($existing) {
+                calendar_event::load($existing->id)->delete();
+            }
+            continue;
+        }
+        $event = (object) [
+            'name' => get_string($label, 'mod_mylkpd', format_string($mylkpd->name)),
+            'description' => '',
+            'format' => FORMAT_HTML,
+            'courseid' => $mylkpd->course,
+            'groupid' => 0,
+            'userid' => 0,
+            'modulename' => 'mylkpd',
+            'instance' => $mylkpd->id,
+            'eventtype' => $eventtype,
+            'type' => $type,
+            'timestart' => $time,
+            'timesort' => $time,
+            'timeduration' => 0,
+            'visible' => instance_is_visible('mylkpd', $mylkpd),
+        ];
+        if ($existing) {
+            calendar_event::load($existing->id)->update($event, false);
+        } else {
+            calendar_event::create($event, false);
+        }
+    }
+}
+
+/**
+ * Rebuilds the calendar events (called by Moodle, e.g. after a course reset or restore).
+ *
+ * @param int $courseid
+ * @param stdClass|int|null $instance
+ * @param stdClass|int|null $cm
+ * @return bool
+ */
+function mylkpd_refresh_events($courseid = 0, $instance = null, $cm = null) {
+    global $DB;
+    if ($instance) {
+        $instances = [is_object($instance) ? $instance : $DB->get_record('mylkpd', ['id' => $instance], '*', MUST_EXIST)];
+    } else {
+        $instances = $DB->get_records('mylkpd', $courseid ? ['course' => $courseid] : []);
+    }
+    foreach ($instances as $mylkpd) {
+        $cmrecord = get_coursemodule_from_instance('mylkpd', $mylkpd->id, $mylkpd->course, false, IGNORE_MISSING);
+        if ($cmrecord) {
+            mylkpd_refresh_instance_events($mylkpd, (int) $cmrecord->id);
+        }
+    }
+    return true;
+}
+
+/**
+ * What the deadline event on the Timeline links to ("Work on it"), hidden once the work is submitted.
+ *
+ * @param calendar_event $event
+ * @param \core_calendar\action_factory $factory
+ * @param int $userid
+ * @return \core_calendar\local\event\entities\action_interface|null
+ */
+function mod_mylkpd_core_calendar_provide_event_action(calendar_event $event, \core_calendar\action_factory $factory,
+        int $userid = 0) {
+    global $DB, $USER;
+    $userid = $userid ?: (int) $USER->id;
+    $cm = get_fast_modinfo($event->courseid, $userid)->instances['mylkpd'][$event->instance] ?? null;
+    if (!$cm || !$cm->uservisible) {
+        return null;
+    }
+    $context = context_module::instance($cm->id);
+    if ($event->eventtype === 'due') {
+        if (!has_capability('mod/mylkpd:submit', $context, $userid, false)) {
+            return null;
+        }
+        require_once(__DIR__ . '/locallib.php');
+        $mylkpd = $DB->get_record('mylkpd', ['id' => $event->instance], '*', MUST_EXIST);
+        $sub = mylkpd_find_submission($mylkpd, $cm, $userid);
+        if ($sub && $sub->status == MYLKPD_STATUS_SUBMITTED) {
+            return null;
+        }
+        return $factory->create_instance(get_string('workonit', 'mod_mylkpd'),
+            new moodle_url('/mod/mylkpd/view.php', ['id' => $cm->id]), 1, mylkpd_can_work($mylkpd));
+    }
+    return null;
+}
+
+/**
+ * Cached course module information: the dates, so the course page and activity header can show them.
+ *
+ * @param stdClass $coursemodule
+ * @return cached_cm_info|false
+ */
+function mylkpd_get_coursemodule_info($coursemodule) {
+    global $DB;
+    $mylkpd = $DB->get_record('mylkpd', ['id' => $coursemodule->instance],
+        'id, name, intro, introformat, timeopen, duedate, cutoffdate');
+    if (!$mylkpd) {
+        return false;
+    }
+    $info = new cached_cm_info();
+    $info->name = $mylkpd->name;
+    if ($coursemodule->showdescription) {
+        $info->content = format_module_intro('mylkpd', $mylkpd, $coursemodule->id, false);
+    }
+    $info->customdata = [
+        'timeopen' => (int) $mylkpd->timeopen,
+        'duedate' => (int) $mylkpd->duedate,
+        'cutoffdate' => (int) $mylkpd->cutoffdate,
+    ];
+    return $info;
 }

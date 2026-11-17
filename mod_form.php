@@ -48,6 +48,14 @@ class mod_mylkpd_mod_form extends moodleform_mod {
         $mform->addElement('advcheckbox', 'teamsubmission', get_string('teamsubmission', 'mod_mylkpd'));
         $mform->addHelpButton('teamsubmission', 'teamsubmission', 'mod_mylkpd');
 
+        $mform->addElement('select', 'teamsubmitmode', get_string('teamsubmitmode', 'mod_mylkpd'), [
+            0 => get_string('teamsubmitany', 'mod_mylkpd'),
+            1 => get_string('teamsubmitall', 'mod_mylkpd'),
+        ]);
+        $mform->setDefault('teamsubmitmode', 0);
+        $mform->addHelpButton('teamsubmitmode', 'teamsubmitmode', 'mod_mylkpd');
+        $mform->hideIf('teamsubmitmode', 'teamsubmission', 'notchecked');
+
         $mform->addElement('select', 'allowresubmit', get_string('allowresubmit', 'mod_mylkpd'), [
             1 => get_string('allowresubmituntilgraded', 'mod_mylkpd'),
             2 => get_string('allowresubmitalways', 'mod_mylkpd'),
@@ -67,9 +75,28 @@ class mod_mylkpd_mod_form extends moodleform_mod {
 
         // Changing these after students started would make existing answers unusable.
         if ($this->has_submissions()) {
-            $mform->hardFreeze(['workmode', 'teamsubmission']);
+            $mform->hardFreeze(['workmode', 'teamsubmission', 'teamsubmitmode']);
             $mform->addElement('static', 'settingslocked', '', get_string('settingslocked', 'mod_mylkpd'));
         }
+
+        $mform->addElement('header', 'availability', get_string('availability', 'mod_mylkpd'));
+        $mform->setExpanded('availability', true);
+        $mform->addElement('date_time_selector', 'timeopen', get_string('timeopen', 'mod_mylkpd'), ['optional' => true]);
+        $mform->addHelpButton('timeopen', 'timeopen', 'mod_mylkpd');
+        $mform->addElement('date_time_selector', 'duedate', get_string('duedate', 'mod_mylkpd'), ['optional' => true]);
+        $mform->addHelpButton('duedate', 'duedate', 'mod_mylkpd');
+        $mform->addElement('date_time_selector', 'cutoffdate', get_string('cutoffdate', 'mod_mylkpd'), ['optional' => true]);
+        $mform->addHelpButton('cutoffdate', 'cutoffdate', 'mod_mylkpd');
+
+        $mform->addElement('float', 'latepenalty', get_string('latepenalty', 'mod_mylkpd'));
+        $mform->setDefault('latepenalty', 0);
+        $mform->addHelpButton('latepenalty', 'latepenalty', 'mod_mylkpd');
+        $mform->hideIf('latepenalty', 'duedate[enabled]', 'notchecked');
+        $mform->addElement('select', 'latepenaltymode', get_string('latepenaltymode', 'mod_mylkpd'), [
+            0 => get_string('latepenaltyonce', 'mod_mylkpd'),
+            1 => get_string('latepenaltyperday', 'mod_mylkpd'),
+        ]);
+        $mform->hideIf('latepenaltymode', 'duedate[enabled]', 'notchecked');
 
         $this->standard_grading_coursemodule_elements();
         $this->standard_coursemodule_elements();
@@ -96,6 +123,24 @@ class mod_mylkpd_mod_form extends moodleform_mod {
      */
     public function validation($data, $files) {
         $errors = parent::validation($data, $files);
+        $open = (int) ($data['timeopen'] ?? 0);
+        $due = (int) ($data['duedate'] ?? 0);
+        $cutoff = (int) ($data['cutoffdate'] ?? 0);
+        if ($open && $due && $due < $open) {
+            $errors['duedate'] = get_string('duebeforeopen', 'mod_mylkpd');
+        }
+        if ($cutoff && $due && $cutoff < $due) {
+            $errors['cutoffdate'] = get_string('cutoffbeforedue', 'mod_mylkpd');
+        } else if ($cutoff && $open && $cutoff < $open) {
+            $errors['cutoffdate'] = get_string('cutoffbeforeopen', 'mod_mylkpd');
+        }
+        $penalty = (float) ($data['latepenalty'] ?? 0);
+        if ($penalty < 0) {
+            $errors['latepenalty'] = get_string('latepenaltynegative', 'mod_mylkpd');
+        } else if ($penalty > 0 && isset($data['grade']) && is_numeric($data['grade']) && $data['grade'] > 0 &&
+                $penalty > $data['grade']) {
+            $errors['latepenalty'] = get_string('latepenaltytoolarge', 'mod_mylkpd', $data['grade']);
+        }
         if (($data['workmode'] ?? '') === 'edit' && !empty($data['worksheet'])) {
             $draft = file_get_drafarea_files($data['worksheet']);
             $name = $draft->list ? reset($draft->list)->filename : '';

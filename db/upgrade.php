@@ -112,5 +112,35 @@ function xmldb_mylkpd_upgrade($oldversion) {
         upgrade_mod_savepoint(true, 2026111800, 'mylkpd');
     }
 
+    if ($oldversion < 2026111803) {
+        $table = new xmldb_table('mylkpd');
+        $fields = [
+            new xmldb_field('timeopen', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0', 'aienabled'),
+            new xmldb_field('duedate', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0', 'timeopen'),
+            new xmldb_field('cutoffdate', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0', 'duedate'),
+            new xmldb_field('latepenalty', XMLDB_TYPE_NUMBER, '10, 2', null, XMLDB_NOTNULL, null, '0', 'cutoffdate'),
+            new xmldb_field('latepenaltymode', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '0', 'latepenalty'),
+            new xmldb_field('teamsubmitmode', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '0', 'latepenaltymode'),
+        ];
+        foreach ($fields as $field) {
+            if (!$dbman->field_exists($table, $field)) {
+                $dbman->add_field($table, $field);
+            }
+        }
+        $table = new xmldb_table('mylkpd_submissions');
+        $fields = [
+            new xmldb_field('timesubmitted', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0', 'revision'),
+            new xmldb_field('submittedby', XMLDB_TYPE_TEXT, null, null, null, null, null, 'timesubmitted'),
+        ];
+        foreach ($fields as $field) {
+            if (!$dbman->field_exists($table, $field)) {
+                $dbman->add_field($table, $field);
+            }
+        }
+        // Work submitted before this version: use its last change as the submission time.
+        $DB->execute('UPDATE {mylkpd_submissions} SET timesubmitted = timemodified WHERE status = 1 AND timesubmitted = 0');
+        upgrade_mod_savepoint(true, 2026111803, 'mylkpd');
+    }
+
     return true;
 }

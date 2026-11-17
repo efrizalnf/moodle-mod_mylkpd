@@ -8,7 +8,7 @@
     display: flex;
     flex-direction: column;
     gap: .35rem;
-    max-width: 1000px;
+    max-width: 1100px; /* A little wider than the page, so each row of tools fits on one line. */
     margin: 0 auto 1rem;
     padding: .45rem .6rem;
     background: #fff;
@@ -1260,4 +1260,241 @@
 
 .path-mod-mylkpd .mylkpd-ai-total {
     margin: .4rem 0 .2rem;
+}
+
+/* AI result: right / partly right / wrong */
+.mylkpd-badge {
+    display: inline-block;
+    padding: .1rem .45rem;
+    font-size: .8rem;
+    font-weight: 600;
+    white-space: nowrap;
+    border-radius: 1rem;
+}
+
+.mylkpd-badge-right {
+    color: #0f5132;
+    background: #d1e7dd;
+}
+
+.mylkpd-badge-partial {
+    color: #664d03;
+    background: #fff3cd;
+}
+
+.mylkpd-badge-wrong {
+    color: #842029;
+    background: #f8d7da;
+}
+
+.mylkpd-badge-unknown {
+    color: #41464b;
+    background: #e2e3e5;
+}
+
+.path-mod-mylkpd .mylkpd-ai-warn {
+    margin-top: .2rem;
+    font-size: .78rem;
+    font-weight: 600;
+    color: #b02a37;
+}
+
+/* Marks on the worksheet at each answer area */
+.path-mod-mylkpd .mylkpd-anchor-block.mylkpd-verdict-right,
+.path-mod-mylkpd .mylkpd-anchor-rect.mylkpd-verdict-right {
+    background: rgba(25, 135, 84, .12);
+    box-shadow: inset 3px 0 0 #198754;
+    border-color: #198754;
+}
+
+.path-mod-mylkpd .mylkpd-anchor-block.mylkpd-verdict-partial,
+.path-mod-mylkpd .mylkpd-anchor-rect.mylkpd-verdict-partial {
+    background: rgba(255, 193, 7, .16);
+    box-shadow: inset 3px 0 0 #e0a800;
+    border-color: #e0a800;
+}
+
+.path-mod-mylkpd .mylkpd-anchor-block.mylkpd-verdict-wrong,
+.path-mod-mylkpd .mylkpd-anchor-rect.mylkpd-verdict-wrong {
+    background: rgba(220, 53, 69, .1);
+    box-shadow: inset 3px 0 0 #dc3545;
+    border-color: #dc3545;
+}
+
+.path-mod-mylkpd .mylkpd-verdict-right::after {
+    background: #198754;
+}
+
+.path-mod-mylkpd .mylkpd-verdict-partial::after {
+    color: #3d2e00;
+    background: #ffc107;
+}
+
+.path-mod-mylkpd .mylkpd-verdict-wrong::after {
+    background: #dc3545;
+}
+
+/* Verdict labels sit in the right margin so they do not cover the answer. */
+.path-mod-mylkpd .mylkpd-anchor-block[class*="mylkpd-verdict-"]::after {
+    left: calc(100% + 6px);
+    white-space: nowrap;
+}
+
+.path-mod-mylkpd td .mylkpd-anchor-block[class*="mylkpd-verdict-"]::after {
+    left: auto;
+    right: 0;
+    transform: translateY(-80%);
+}
+
+.mylkpd-aitest-reply {
+    max-height: 320px;
+    overflow: auto;
+    padding: .6rem;
+    font-size: .8rem;
+    white-space: pre-wrap;
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: .3rem;
+}
+
+/* AI connection status (plugin settings) */
+.mylkpd-aistatus {
+    padding: .6rem .8rem;
+    border: 1px solid #dee2e6;
+    border-left: 4px solid #adb5bd;
+    border-radius: .4rem;
+    background: #f8f9fa;
+}
+
+.mylkpd-aistatus-line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .4rem;
+}
+
+.mylkpd-aistatus-dot {
+    display: inline-block;
+    width: .8rem;
+    height: .8rem;
+    border-radius: 50%;
+    background: #adb5bd;
+}
+
+.mylkpd-aistatus-ok {
+    border-left-color: #198754;
+    background: #f0f9f4;
+}
+
+.mylkpd-aistatus-ok .mylkpd-aistatus-dot {
+    background: #198754;
+    box-shadow: 0 0 0 3px rgba(25, 135, 84, .2);
+}
+
+.mylkpd-aistatus-fail {
+    border-left-color: #dc3545;
+    background: #fdf3f4;
+}
+
+.mylkpd-aistatus-fail .mylkpd-aistatus-dot {
+    background: #dc3545;
+    box-shadow: 0 0 0 3px rgba(220, 53, 69, .2);
+}
+
+.mylkpd-aistatus-checking .mylkpd-aistatus-dot {
+    background: #0d6efd;
+    animation: mylkpd-pulse 1s infinite alternate;
+}
+
+@keyframes mylkpd-pulse {
+    from {
+        opacity: .3;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+.mylkpd-aistatus-message {
+    margin: .3rem 0;
+    color: #b02a37;
+    word-break: break-word;
+}
+
+.mylkpd-aistatus-message:empty {
+    display: none;
+}
+
+.mylkpd-aistatus-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .6rem;
+    margin: .4rem 0 .2rem;
+}
+
+/* Schedule and lateness */
+.path-mod-mylkpd .mylkpd-schedule {
+    margin-top: .45rem;
+}
+
+.path-mod-mylkpd .mylkpd-timeleft {
+    color: #0f5132;
+    font-weight: 600;
+}
+
+.path-mod-mylkpd .mylkpd-overdue {
+    color: #b02a37;
+    font-weight: 600;
+}
+
+.path-mod-mylkpd .mylkpd-latewarning {
+    margin-top: .5rem;
+    padding: .4rem .6rem;
+    font-size: .875rem;
+    color: #842029;
+    background: #f8d7da;
+    border-radius: .3rem;
+}
+
+/* Group work where every member must submit */
+.path-mod-mylkpd .mylkpd-teamprogress {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .3rem;
+    margin-top: .45rem;
+}
+
+.path-mod-mylkpd .mylkpd-teamchip {
+    padding: .05rem .5rem;
+    font-size: .8rem;
+    border-radius: 1rem;
+}
+
+.path-mod-mylkpd .mylkpd-teamchip-done {
+    color: #0f5132;
+    background: #d1e7dd;
+}
+
+.path-mod-mylkpd .mylkpd-teamchip-wait {
+    color: #495057;
+    background: #e9ecef;
+}
+
+.path-mod-mylkpd .mylkpd-confirmed {
+    color: #0f5132;
+    font-weight: 600;
+}
+
+/* Paragraph alignment buttons */
+.path-mod-mylkpd .mylkpd-svgicon {
+    display: block;
+}
+
+.path-mod-mylkpd .mylkpd-toolbar [data-mylkpd-align].active {
+    color: #fff;
+    background: #0f6cbf;
+    border-color: #0f6cbf;
 }

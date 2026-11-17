@@ -354,6 +354,25 @@ var MyLKPD = (function() {
             return nodes.length > 0;
         }
 
+        var ALIGNS = ['left', 'center', 'right', 'justify'];
+
+        /**
+         * What is stored for a paragraph: its alignment and its content, as one comparable string.
+         *
+         * @param {HTMLElement} p
+         * @return {String}
+         */
+        function blockState(p) {
+            return (p.getAttribute('data-mylkpd-textalign') || '') + '\u0001' + serializeBlock(p);
+        }
+
+        function setBlockAlign(p, align) {
+            if (ALIGNS.indexOf(align) >= 0) {
+                p.setAttribute('data-mylkpd-textalign', align);
+                p.style.textAlign = align;
+            }
+        }
+
         /**
          * Turns \(TeX\) text inside a paragraph into rendered equation chips; makes links open in a new tab.
          *
@@ -460,10 +479,14 @@ var MyLKPD = (function() {
             });
             Object.keys(touched).forEach(function(id) {
                 var el = blockEls[id];
-                var html = el ? serializeBlock(el) : null;
-                if (el && html !== shadowBlocks[id]) {
-                    ops.push({op: 'put', kind: 'block', id: id, html: html});
-                    shadowBlocks[id] = html;
+                var state = el ? blockState(el) : null;
+                if (el && state !== shadowBlocks[id]) {
+                    var op = {op: 'put', kind: 'block', id: id, html: serializeBlock(el)};
+                    if (el.getAttribute('data-mylkpd-textalign')) {
+                        op.align = el.getAttribute('data-mylkpd-textalign');
+                    }
+                    ops.push(op);
+                    shadowBlocks[id] = state;
                 }
                 delete touched[id];
             });
@@ -548,7 +571,7 @@ var MyLKPD = (function() {
                 if (ops.length || (stateEl && stateEl.classList.contains('mylkpd-state-saveerror'))) {
                     setState('saved');
                 }
-                if (res.status === 1 && !isTeacher) {
+                if ((res.status === 1 || res.closed) && !isTeacher) {
                     // Someone (a group mate) submitted: reload to show the locked worksheet.
                     window.removeEventListener('beforeunload', warnUnsaved);
                     window.location.reload();
@@ -607,14 +630,15 @@ var MyLKPD = (function() {
                 var b = res.blocks[id];
                 var el = blockEls[id];
                 if (!el || el === document.activeElement || touched[id] || inOutbox('block', id) ||
-                        serializeBlock(el) !== shadowBlocks[id]) {
+                        blockState(el) !== shadowBlocks[id]) {
                     return;
                 }
                 if (b.html !== undefined && b.html !== serializeBlock(el)) {
                     el.innerHTML = b.html;
                     hydrateBlock(el);
                 }
-                shadowBlocks[id] = serializeBlock(el);
+                setBlockAlign(el, b.align);
+                shadowBlocks[id] = blockState(el);
                 markEdited(el, b.by, b.teacher);
             });
             if (res.presence) {
@@ -858,6 +882,9 @@ var MyLKPD = (function() {
             ta.style.borderColor = item.color;
             ta.setAttribute('aria-label', cfg.strings.answer);
             ta.dir = 'auto'; // Arabic answers are written right to left.
+            if (ALIGNS.indexOf(item.align) >= 0) {
+                ta.style.textAlign = item.align;
+            }
             if (item.by && memberName(item.by)) {
                 el.title = cfg.strings.editedby.replace('{name}', memberName(item.by));
             }
@@ -1425,7 +1452,10 @@ var MyLKPD = (function() {
                     markEdited(p, saved[id].by, saved[id].teacher);
                 }
                 hydrateBlock(p);
-                shadowBlocks[id] = serializeBlock(p);
+                if (saved[id]) {
+                    setBlockAlign(p, saved[id].align);
+                }
+                shadowBlocks[id] = blockState(p);
                 if (!readonly) {
                     makeEditable(p, id);
                 }
@@ -2029,7 +2059,73 @@ var MyLKPD = (function() {
             }
         }
 
+        /**
+         * Current alignment of a paragraph or text box (from its own setting or the Word document).
+         *
+         * @param {HTMLElement} el
+         * @return {String}
+         */
+        function currentAlign(el) {
+            var a = window.getComputedStyle(el).textAlign;
+            if (a === 'start' || a === '-webkit-left' || a === 'auto') {
+                return el.dir === 'rtl' || window.getComputedStyle(el).direction === 'rtl' ? 'right' : 'left';
+            }
+            if (a === 'end') {
+                return 'right';
+            }
+            return ALIGNS.indexOf(a) >= 0 ? a : 'left';
+        }
+
+        function updateAlignButtons() {
+            var target = isTarget(lastTarget) ? lastTarget : null;
+            var active = target ? currentAlign(target) : '';
+            Array.prototype.forEach.call(document.querySelectorAll('[data-mylkpd-align]'), function(b) {
+                var on = b.getAttribute('data-mylkpd-align') === active;
+                b.classList.toggle('active', on);
+                b.setAttribute('aria-pressed', on ? 'true' : 'false');
+            });
+        }
+
+        /**
+         * Aligns the paragraph (or text box) the student is typing in.
+         *
+         * @param {String} align left|center|right|justify
+         */
+        function applyAlign(align) {
+            if (!isTarget(lastTarget)) {
+                flashHint(cfg.strings.needfocus);
+                return;
+            }
+            var el = lastTarget;
+            if (el.tagName === 'TEXTAREA') {
+                var item = owners.get(closestItem(el));
+                if (!item || !canEdit(item)) {
+                    return;
+                }
+                recordUndo([{id: item.id, before: copy(item)}]);
+                item.align = align;
+                el.style.textAlign = align;
+                claim(item);
+                changed();
+            } else {
+                var id = el.getAttribute('data-mylkpd-block');
+                setBlockAlign(el, align);
+                touched[id] = true;
+                markEdited(el, cfg.userid, isTeacher);
+                scheduleSave();
+            }
+            el.focus();
+            updateAlignButtons();
+        }
+
         function setupInsertTools() {
+            Array.prototype.forEach.call(document.querySelectorAll('[data-mylkpd-align]'), function(b) {
+                keepFocus(b);
+                b.addEventListener('click', function() {
+                    applyAlign(b.getAttribute('data-mylkpd-align'));
+                });
+            });
+            container.addEventListener('focusin', updateAlignButtons);
             Array.prototype.forEach.call(document.querySelectorAll('[data-mylkpd-insert]'), function(b) {
                 keepFocus(b);
                 b.addEventListener('click', function() {
@@ -2223,7 +2319,8 @@ var MyLKPD = (function() {
                 if (el.classList.contains('mylkpd-anchor-rect')) {
                     el.parentNode.removeChild(el);
                 } else {
-                    el.classList.remove('mylkpd-anchor-block', 'mylkpd-anchor-active');
+                    el.classList.remove('mylkpd-anchor-block', 'mylkpd-anchor-active', 'mylkpd-verdict-right',
+                        'mylkpd-verdict-partial', 'mylkpd-verdict-wrong', 'mylkpd-verdict-unknown');
                     el.removeAttribute('data-mylkpd-anchor');
                 }
             });
@@ -2235,6 +2332,9 @@ var MyLKPD = (function() {
                     if (el) {
                         el.classList.add('mylkpd-anchor-block');
                         el.classList.toggle('mylkpd-anchor-active', !!q.active);
+                        if (q.verdict) {
+                            el.classList.add('mylkpd-verdict-' + q.verdict);
+                        }
                         el.setAttribute('data-mylkpd-anchor', q.label);
                         anchorMarks.push(el);
                     }
@@ -2245,7 +2345,8 @@ var MyLKPD = (function() {
                         return;
                     }
                     var box = document.createElement('div');
-                    box.className = 'mylkpd-anchor-rect' + (q.active ? ' mylkpd-anchor-active' : '');
+                    box.className = 'mylkpd-anchor-rect' + (q.active ? ' mylkpd-anchor-active' : '') +
+                        (q.verdict ? ' mylkpd-verdict-' + q.verdict : '');
                     box.style.left = r.x + '%';
                     box.style.top = r.y + '%';
                     box.style.width = r.w + '%';
@@ -2270,7 +2371,7 @@ var MyLKPD = (function() {
             var found = [];
             ids.forEach(function(id) {
                 var el = blockEls[id];
-                var m = /^\s*(\d{1,2})\s*[.)]\s+(\S[\s\S]{3,})$/.exec(el.textContent.replace(/\s+/g, ' '));
+                var m = /^\s*(?:soal|no\.?|nomor)?\s*(\d{1,2})\s*[.):]\s*(\S[\s\S]{3,})$/i.exec(el.textContent.replace(/\s+/g, ' '));
                 if (m && !el.closest('td, th')) {
                     found.push({label: m[1], question: m[2].trim(), id: id});
                 }

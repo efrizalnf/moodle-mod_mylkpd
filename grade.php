@@ -114,6 +114,7 @@ if ($data = $form->get_data()) {
     $submission->timegraded = $now;
     if (!empty($data->reopen)) {
         $submission->status = MYLKPD_STATUS_DRAFT;
+        $submission->submittedby = null;
     }
     $DB->update_record('mylkpd_submissions', $submission);
     mylkpd_update_grades($mylkpd);
@@ -131,8 +132,8 @@ echo $OUTPUT->heading(get_string('gradeuser', 'mod_mylkpd', $title), 3);
 if (!$submission) {
     echo $OUTPUT->notification(get_string('statusnotstarted', 'mod_mylkpd'), \core\output\notification::NOTIFY_INFO);
 } else {
-    $key = $submission->status == MYLKPD_STATUS_SUBMITTED ? 'statussubmitted' : 'statusdraft';
-    echo html_writer::tag('p', get_string($key, 'mod_mylkpd') . ' (' . userdate($submission->timemodified) . ')');
+    echo html_writer::tag('p', mylkpd_status_badge($submission, $mylkpd, $context) . ' ' .
+        html_writer::span(userdate($submission->timesubmitted ?: $submission->timemodified), 'small text-muted'));
 }
 
 if ($team) {
@@ -182,14 +183,22 @@ if (mylkpd_ai_enabled($mylkpd)) {
             html_writer::span(get_string('aicheckinfo', 'mod_mylkpd', count($aiquestions)), 'small text-muted') . ' ' .
             html_writer::link($keysurl, get_string('answerkeys', 'mod_mylkpd'), ['class' => 'small']),
             'mylkpd-ai-tools');
+        echo html_writer::tag('label', html_writer::empty_tag('input', ['type' => 'checkbox', 'checked' => 'checked',
+            'data-mylkpd-ai' => 'marks', 'class' => 'form-check-input me-1 mr-1']) . get_string('aimarks', 'mod_mylkpd'),
+            ['class' => 'small d-block mb-2']);
         echo html_writer::div('', 'mylkpd-ai-result', ['id' => 'mylkpd-ai-result', 'aria-live' => 'polite']);
+        $areas = [];
+        foreach ($aiquestions as $q) {
+            $areas[$q->id] = $q->area;
+        }
         $stored = ($submission && !empty($submission->airesult)) ? json_decode($submission->airesult, true) : null;
         if ($stored) {
             $stored['timetext'] = userdate($stored['time'] ?? 0);
         }
         $aistrings = [];
-        foreach (['colnumber', 'colanswer', 'colscore', 'colfeedback', 'total', 'checkedat', 'apply', 'review', 'checking',
-                'failed', 'missing', 'empty', 'number', 'replacefeedback'] as $k) {
+        foreach (['colnumber', 'colanswer', 'colscore', 'colstatus', 'colfeedback', 'total', 'checkedat', 'apply', 'review',
+                'checking', 'failed', 'missing', 'empty', 'number', 'replacefeedback', 'vright', 'vpartial', 'vwrong', 'vunknown',
+                'unchanged', 'outside'] as $k) {
             $aistrings[$k] = get_string('ai' . $k, 'mod_mylkpd');
         }
         $PAGE->requires->js(new moodle_url('/mod/mylkpd/js/aicheck.js'));
@@ -202,6 +211,7 @@ if (mylkpd_ai_enabled($mylkpd)) {
             'hasRubric' => (bool) $controller,
             'decsep' => get_string('decsep', 'langconfig'),
             'result' => $stored,
+            'areas' => (object) $areas,
             'strings' => $aistrings,
         ]) . ');', true);
     }
@@ -210,6 +220,18 @@ if (mylkpd_ai_enabled($mylkpd)) {
 
 echo $OUTPUT->box_start('generalbox mylkpd-gradebox');
 echo $OUTPUT->heading(get_string('grading', 'mod_mylkpd'), 4);
+$latepenalty = $submission ? mylkpd_late_penalty($mylkpd, $submission) : 0;
+if ($latepenalty > 0) {
+    // The teacher grades the work itself; the penalty is taken off automatically for the gradebook.
+    echo $OUTPUT->notification(get_string('latepenaltygrading', 'mod_mylkpd', (object) [
+        'late' => format_time(mylkpd_late_seconds($mylkpd, $submission)),
+        'penalty' => format_float($latepenalty, 2),
+    ]), \core\output\notification::NOTIFY_WARNING);
+    if ($submission->grade !== null) {
+        echo html_writer::div(html_writer::tag('strong', get_string('finalgrade', 'mod_mylkpd') . ': ') .
+            s(mylkpd_display_final_grade($mylkpd, $submission)), 'mb-2');
+    }
+}
 if ($rubricwarning) {
     echo $OUTPUT->notification($rubricwarning, \core\output\notification::NOTIFY_WARNING);
 }

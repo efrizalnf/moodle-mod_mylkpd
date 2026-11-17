@@ -35,4 +35,7 @@ if ($ADMIN->fulltree) {
 
     $settings->add(new admin_setting_configtext('mod_mylkpd/aiendpoint',
         get_string('aiendpoint', 'mod_mylkpd'), get_string('aiendpoint_desc', 'mod_mylkpd'), '', PARAM_URL));
+
+    // Connection status right on the settings page (checks the values typed above, no need to save first).
+    $settings->add(new \mod_mylkpd\admin\setting_aistatus());
 }

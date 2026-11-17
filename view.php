@@ -32,28 +32,76 @@ $team = !empty($mylkpd->teamsubmission);
 $groupid = ($cansubmit && $team) ? mylkpd_get_user_groupid($cm, $USER->id) : 0;
 $nogroup = $cansubmit && $team && !$groupid;
 
+$canwork = mylkpd_can_work($mylkpd);
+$allmembers = mylkpd_requires_all_members($mylkpd);
+
+/**
+ * Message for a student who cannot work right now (not open yet / closed).
+ *
+ * @param stdClass $mylkpd
+ * @return string
+ */
+$notworkingmessage = function(stdClass $mylkpd): string {
+    return mylkpd_is_open($mylkpd) ? get_string('closedmessage', 'mod_mylkpd', userdate($mylkpd->cutoffdate))
+        : get_string('notopenmessage', 'mod_mylkpd', userdate($mylkpd->timeopen));
+};
+
 // Final submission. Answers themselves are saved continuously through ajax.php.
 if ($cansubmit && !$nogroup && data_submitted() && confirm_sesskey() && optional_param('submitfinal', 0, PARAM_BOOL)) {
+    if (!$canwork) {
+        redirect($PAGE->url, $notworkingmessage($mylkpd), null, \core\output\notification::NOTIFY_WARNING);
+    }
     $submission = mylkpd_find_submission($mylkpd, $cm, $USER->id, true);
     if ($submission->status == MYLKPD_STATUS_SUBMITTED) {
         redirect($PAGE->url, get_string('alreadysubmitted', 'mod_mylkpd'), null,
             \core\output\notification::NOTIFY_WARNING);
     }
+    $now = time();
+    if ($allmembers) {
+        // Every member must submit: record this member; the group's work is submitted when all have.
+        $done = mylkpd_team_confirmations($submission);
+        $done[$USER->id] = $now;
+        $submission->submittedby = json_encode($done);
+        $pending = mylkpd_team_pending($mylkpd, $context, $submission);
+        if ($pending) {
+            $DB->update_record('mylkpd_submissions', $submission);
+            $names = implode(', ', array_column(mylkpd_members($pending), 'name'));
+            redirect($PAGE->url, get_string('teamconfirmed', 'mod_mylkpd', $names), null,
+                \core\output\notification::NOTIFY_SUCCESS);
+        }
+    }
     $submission->status = MYLKPD_STATUS_SUBMITTED;
     $submission->userid = $USER->id;
-    $submission->timemodified = time();
+    $submission->timesubmitted = $now;
+    $submission->timemodified = $now;
     $DB->update_record('mylkpd_submissions', $submission);
     mylkpd_cleanup_images($context, $submission);
-    redirect($PAGE->url, get_string('submitted', 'mod_mylkpd'), null, \core\output\notification::NOTIFY_SUCCESS);
+    $late = mylkpd_late_seconds($mylkpd, $submission);
+    redirect($PAGE->url, $late ? get_string('submittedlate', 'mod_mylkpd', format_time($late)) : get_string('submitted', 'mod_mylkpd'),
+        null, $late ? \core\output\notification::NOTIFY_WARNING : \core\output\notification::NOTIFY_SUCCESS);
+}
+
+// Every member must submit: a member takes back their own submission (the group's work is not submitted yet).
+if ($cansubmit && $allmembers && !$nogroup && data_submitted() && confirm_sesskey() && optional_param('unconfirm', 0, PARAM_BOOL)) {
+    $submission = mylkpd_find_submission($mylkpd, $cm, $USER->id);
+    if ($submission && $submission->status != MYLKPD_STATUS_SUBMITTED) {
+        $done = mylkpd_team_confirmations($submission);
+        unset($done[$USER->id]);
+        $submission->submittedby = $done ? json_encode($done) : null;
+        $DB->update_record('mylkpd_submissions', $submission);
+    }
+    redirect($PAGE->url, get_string('teamunconfirmed', 'mod_mylkpd'), null, \core\output\notification::NOTIFY_INFO);
 }
 
 // Edit again: put a submitted worksheet back to draft so it can be changed and submitted again.
 if ($cansubmit && !$nogroup && data_submitted() && confirm_sesskey() && optional_param('reopen', 0, PARAM_BOOL)) {
     $submission = mylkpd_find_submission($mylkpd, $cm, $USER->id);
-    if (!mylkpd_can_reopen($mylkpd, $submission)) {
-        redirect($PAGE->url, get_string('cannotreopen', 'mod_mylkpd'), null, \core\output\notification::NOTIFY_WARNING);
+    if (!$canwork || !mylkpd_can_reopen($mylkpd, $submission)) {
+        redirect($PAGE->url, $canwork ? get_string('cannotreopen', 'mod_mylkpd') : $notworkingmessage($mylkpd), null,
+            \core\output\notification::NOTIFY_WARNING);
     }
     $submission->status = MYLKPD_STATUS_DRAFT;
+    $submission->submittedby = null; // Everyone submits again.
     $submission->timemodified = time();
     $DB->update_record('mylkpd_submissions', $submission);
     redirect($PAGE->url, get_string('reopened', 'mod_mylkpd'), null, \core\output\notification::NOTIFY_SUCCESS);
@@ -67,9 +115,13 @@ $event->trigger();
 
 $submission = ($cansubmit && !$nogroup) ? mylkpd_find_submission($mylkpd, $cm, $USER->id) : null;
 $issubmitted = $submission && $submission->status == MYLKPD_STATUS_SUBMITTED;
-$readonly = !$cansubmit || $nogroup || $issubmitted;
+$readonly = !$cansubmit || $nogroup || $issubmitted || !$canwork;
 $memberids = $cansubmit ? mylkpd_member_ids($mylkpd, $groupid, $USER->id) : [];
-$worksheet = mylkpd_render_worksheet($mylkpd, $cm, $context, $submission, $readonly, $memberids);
+// Before the opening time students only see when it opens (teachers always see the worksheet).
+$hideworksheet = $cansubmit && !mylkpd_is_open($mylkpd);
+$worksheet = $hideworksheet ? ['html' => '', 'ready' => false] :
+    mylkpd_render_worksheet($mylkpd, $cm, $context, $submission, $readonly, $memberids);
+$myconfirmed = $allmembers && $submission && isset(mylkpd_team_confirmations($submission)[$USER->id]);
 
 echo $OUTPUT->header();
 
@@ -85,29 +137,79 @@ if ($nogroup) {
     echo $OUTPUT->notification(get_string('nogroup', 'mod_mylkpd'), \core\output\notification::NOTIFY_WARNING);
 }
 
-// Status card: where the student stands, the grade, feedback and the filled-in rubric.
+// Status card: schedule, where the student stands, the grade, feedback and the filled-in rubric.
 if ($cansubmit && !$nogroup) {
-    if ($issubmitted) {
+    $now = time();
+    $late = mylkpd_late_seconds($mylkpd, $submission);
+    if (!mylkpd_is_open($mylkpd, $now)) {
+        $badge = html_writer::span(get_string('statusnotopen', 'mod_mylkpd'), 'badge bg-secondary badge-secondary');
+        $info = get_string('notopenmessage', 'mod_mylkpd', userdate($mylkpd->timeopen));
+    } else if ($issubmitted) {
         $badge = html_writer::span(get_string('statussubmitted', 'mod_mylkpd'), 'badge bg-success badge-success');
-        $a = (object) ['time' => userdate($submission->timemodified),
-            'name' => fullname(core_user::get_user($submission->userid))];
+        $when = $submission->timesubmitted ?: $submission->timemodified;
+        $a = (object) ['time' => userdate($when), 'name' => fullname(core_user::get_user($submission->userid))];
         $info = get_string($team ? 'groupsubmittedinfo' : 'submittedinfo', 'mod_mylkpd', $team ? $a : $a->time);
+        if ($late) {
+            $badge .= ' ' . html_writer::span(get_string('statuslate', 'mod_mylkpd', format_time($late)),
+                'badge bg-danger badge-danger');
+        }
+    } else if (mylkpd_is_closed($mylkpd, $now)) {
+        $badge = html_writer::span(get_string('statusclosed', 'mod_mylkpd'), 'badge bg-dark badge-dark');
+        $info = get_string('closedmessage', 'mod_mylkpd', userdate($mylkpd->cutoffdate));
     } else {
         $badge = html_writer::span(get_string($submission ? 'statusdraft' : 'statusnotstarted', 'mod_mylkpd'),
             'badge bg-warning text-dark badge-warning');
         $info = get_string('draftinfo', 'mod_mylkpd');
     }
     $card = html_writer::div($badge . html_writer::span($info, 'mylkpd-status-text'), 'mylkpd-status-line');
+
+    // Schedule: opens, deadline (with time left / overdue), closes.
+    $schedule = [];
+    if (!empty($mylkpd->timeopen)) {
+        $schedule[] = html_writer::span(get_string('timeopen', 'mod_mylkpd') . ': ', 'text-muted') . userdate($mylkpd->timeopen);
+    }
+    if (!empty($mylkpd->duedate)) {
+        $left = $mylkpd->duedate - $now;
+        $hint = $issubmitted ? '' : ' ' . html_writer::span($left > 0 ? get_string('timeleft', 'mod_mylkpd', format_time($left)) :
+            get_string('overdue', 'mod_mylkpd', format_time(-$left)), $left > 0 ? 'mylkpd-timeleft' : 'mylkpd-overdue');
+        $schedule[] = html_writer::span(get_string('duedate', 'mod_mylkpd') . ': ', 'text-muted') .
+            html_writer::tag('strong', userdate($mylkpd->duedate)) . $hint;
+    }
+    if (!empty($mylkpd->cutoffdate)) {
+        $schedule[] = html_writer::span(get_string('cutoffdate', 'mod_mylkpd') . ': ', 'text-muted') . userdate($mylkpd->cutoffdate);
+    }
+    if ($schedule) {
+        $card .= html_writer::div(implode(html_writer::span(' · ', 'text-muted'), $schedule), 'mylkpd-schedule small');
+    }
+    // A warning before submitting late.
+    if (!$issubmitted && $canwork && !empty($mylkpd->duedate) && $now > $mylkpd->duedate) {
+        $card .= html_writer::div(get_string(((float) $mylkpd->latepenalty > 0 && $mylkpd->grade > 0) ?
+            (!empty($mylkpd->latepenaltymode) ? 'latewarningperday' : 'latewarningonce') : 'latewarning', 'mod_mylkpd',
+            format_float($mylkpd->latepenalty, 2)), 'mylkpd-latewarning');
+    }
+
     if ($team) {
         $members = mylkpd_members($memberids);
         $card .= html_writer::div(get_string('yourgroup', 'mod_mylkpd', (object) [
             'group' => format_string(groups_get_group_name($groupid)),
             'members' => implode(', ', array_column($members, 'name')),
         ]), 'mylkpd-groupinfo small text-muted');
+        if ($allmembers && !$issubmitted) {
+            // Every member must submit: who has, who has not yet.
+            $done = mylkpd_team_confirmations($submission);
+            $chips = [];
+            foreach (mylkpd_members(array_keys(get_enrolled_users($context, 'mod/mylkpd:submit', $groupid, 'u.id'))) as $uid => $m) {
+                $ok = isset($done[$uid]);
+                $chips[] = html_writer::span(($ok ? '&#10003; ' : '&#9675; ') . s($m['name']),
+                    'mylkpd-teamchip ' . ($ok ? 'mylkpd-teamchip-done' : 'mylkpd-teamchip-wait'));
+            }
+            $card .= html_writer::div(html_writer::span(get_string('teamsubmitprogress', 'mod_mylkpd') . ' ', 'small') .
+                implode(' ', $chips), 'mylkpd-teamprogress');
+        }
     }
     if ($submission && ($submission->grade !== null || !empty($submission->feedback))) {
         $card .= html_writer::div(html_writer::tag('strong', get_string('yourgrade', 'mod_mylkpd') . ': ') .
-            s(mylkpd_display_grade($mylkpd, $submission->grade)), 'mylkpd-grade');
+            s(mylkpd_display_final_grade($mylkpd, $submission)), 'mylkpd-grade');
         if (!empty($submission->feedback)) {
             $card .= html_writer::div(html_writer::tag('strong', get_string('feedback', 'mod_mylkpd') . ': ') .
                 nl2br(s($submission->feedback)), 'mylkpd-feedback');
@@ -130,7 +232,7 @@ if ($cansubmit && !$nogroup) {
     echo html_writer::div($card, 'mylkpd-statuscard');
 }
 
-$canreopen = $issubmitted && mylkpd_can_reopen($mylkpd, $submission);
+$canreopen = $issubmitted && $canwork && mylkpd_can_reopen($mylkpd, $submission);
 
 if (!$readonly && $worksheet['ready']) {
     echo html_writer::start_tag('form', ['method' => 'post', 'action' => $PAGE->url->out(false), 'id' => 'mylkpd-form']);
@@ -143,8 +245,14 @@ if (!$readonly && $worksheet['ready']) {
         'aria-live' => 'polite']);
     echo html_writer::tag('button', '&#128190; ' . get_string('savenow', 'mod_mylkpd'),
         ['type' => 'button', 'class' => 'btn btn-secondary', 'data-mylkpd-action' => 'save']);
-    echo html_writer::tag('button', '&#10148; ' . get_string('submitfinal', 'mod_mylkpd'),
-        ['type' => 'button', 'class' => 'btn btn-primary', 'data-mylkpd-action' => 'submit']);
+    if ($myconfirmed) {
+        echo html_writer::span('&#10003; ' . get_string('teamyouconfirmed', 'mod_mylkpd'), 'mylkpd-confirmed small');
+        echo html_writer::tag('button', get_string('teamunconfirm', 'mod_mylkpd'),
+            ['type' => 'submit', 'name' => 'unconfirm', 'value' => 1, 'class' => 'btn btn-outline-secondary']);
+    } else {
+        echo html_writer::tag('button', '&#10148; ' . get_string($allmembers ? 'teamsubmitmine' : 'submitfinal', 'mod_mylkpd'),
+            ['type' => 'button', 'class' => 'btn btn-primary', 'data-mylkpd-action' => 'submit']);
+    }
     echo html_writer::end_div();
     echo html_writer::end_tag('form');
 } else {
@@ -161,7 +269,8 @@ if (!$readonly && $worksheet['ready']) {
             echo html_writer::tag('button', '&#9998; ' . get_string('editagain', 'mod_mylkpd'),
                 ['type' => 'submit', 'class' => 'btn btn-primary']);
         } else {
-            $reason = ((int) ($mylkpd->allowresubmit ?? 1) === 0) ? 'cannotreopensetting' : 'cannotreopengraded';
+            $reason = !$canwork ? 'cannotreopenclosed' : (((int) ($mylkpd->allowresubmit ?? 1) === 0) ? 'cannotreopensetting' :
+                'cannotreopengraded');
             echo html_writer::span(get_string($reason, 'mod_mylkpd'), 'mylkpd-savestate small text-muted');
             echo html_writer::tag('button', '&#128274; ' . get_string('editagain', 'mod_mylkpd'),
                 ['type' => 'button', 'class' => 'btn btn-outline-secondary', 'disabled' => 'disabled']);

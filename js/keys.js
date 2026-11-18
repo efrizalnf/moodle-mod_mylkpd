@@ -27,11 +27,20 @@ var MyLKPDKeys = (function() {
         }
         var rows = [];
         var active = -1;
+        var mode = 'answer'; // What a click on the worksheet picks for the active row: 'question' or 'answer'.
         var api = window.MyLKPD && window.MyLKPD.current ? window.MyLKPD.current : null;
         var counter = 0;
 
         function emptyArea() {
-            return {blocks: [], original: {}, regions: []};
+            return {blocks: [], original: {}, regions: [], qblocks: [], qregions: []};
+        }
+
+        function fullArea(area) {
+            var a = emptyArea();
+            Object.keys(area || {}).forEach(function(k) {
+                a[k] = area[k];
+            });
+            return a;
         }
 
         function summary(area) {
@@ -46,29 +55,78 @@ var MyLKPDKeys = (function() {
         }
 
         function show() {
-            if (api) {
-                api.showAnchors(rows.map(function(r, i) {
-                    return {label: r.label.value || String(i + 1), area: r.area, active: i === active};
-                }));
+            if (!api) {
+                return;
             }
+            var list = [];
+            rows.forEach(function(r, i) {
+                var label = r.label.value || String(i + 1);
+                list.push({label: label, area: {blocks: r.area.blocks, regions: r.area.regions},
+                    active: i === active && mode === 'answer'});
+                if (r.area.qblocks.length || r.area.qregions.length) {
+                    list.push({label: 'S' + label, area: {blocks: r.area.qblocks, regions: r.area.qregions},
+                        active: i === active && mode === 'question', question: true});
+                }
+            });
+            api.showAnchors(list);
         }
 
         function sync(row) {
             row.anchor.value = JSON.stringify(row.area);
             row.summary.textContent = summary(row.area);
             row.summary.classList.toggle('text-danger', !row.area.blocks.length && !row.area.regions.length);
+            var q = row.area.qblocks.length + row.area.qregions.length;
+            row.qsummary.textContent = q ? S.qquestionpicked.replace('{n}', q) : S.qquestionnone;
             show();
         }
 
-        function setActive(i) {
-            active = (active === i) ? -1 : i;
+        function setActive(i, what) {
+            what = what || 'answer';
+            if (active === i && mode === what) {
+                active = -1;
+            } else {
+                active = i;
+                mode = what;
+                if (rows[i]) {
+                    rows[i].qFresh = true; // The first picked question text replaces, later ones are added.
+                }
+            }
             rows.forEach(function(r, k) {
-                var on = k === active;
-                r.node.classList.toggle('mylkpd-keyrow-active', on);
-                r.pick.textContent = on ? S.qpicking : S.qpick;
-                r.pick.className = 'btn btn-sm ' + (on ? 'btn-primary' : 'btn-outline-primary');
+                var onA = k === active && mode === 'answer';
+                var onQ = k === active && mode === 'question';
+                r.node.classList.toggle('mylkpd-keyrow-active', k === active);
+                r.pick.textContent = onA ? S.qpicking : S.qpick;
+                r.pick.className = 'btn btn-sm ' + (onA ? 'btn-primary' : 'btn-outline-primary');
+                r.pickq.textContent = onQ ? S.qpickingquestion : S.qpickquestion;
+                r.pickq.className = 'btn btn-sm ' + (onQ ? 'btn-mylkpd-q-active' : 'btn-outline-secondary');
             });
             show();
+        }
+
+        /**
+         * Puts picked question text into the Question field; a leading "1." becomes the number.
+         *
+         * @param {Object} row
+         * @param {String} text
+         */
+        function fillQuestion(row, text) {
+            text = String(text || '').replace(/\s+\n/g, '\n').trim();
+            if (!text) {
+                return;
+            }
+            var m = /^\s*(?:soal|no\.?|nomor)?\s*(\d{1,2}[a-z]?)\s*[.):]\s*/i.exec(text);
+            if (m) {
+                if (!row.label.value.trim()) {
+                    row.label.value = m[1];
+                }
+                text = text.slice(m[0].length);
+            }
+            row.question.value = (row.qFresh || !row.question.value.trim()) ? text : row.question.value.trim() + '\n' + text;
+            row.qFresh = false;
+            row.question.classList.add('mylkpd-flash');
+            setTimeout(function() {
+                row.question.classList.remove('mylkpd-flash');
+            }, 700);
         }
 
         function field(row, label, control) {
@@ -85,7 +143,7 @@ var MyLKPDKeys = (function() {
             var node = el('div', {'class': 'mylkpd-keyrow'});
             var head = el('div', {'class': 'mylkpd-keyrow-head'});
             node.appendChild(head);
-            var row = {node: node, area: data.area || emptyArea()};
+            var row = {node: node, area: fullArea(data.area)};
 
             row.label = field(head, S.qlabel, el('input', {type: 'text', name: 'qlabel[' + k + ']', 'class': 'form-control',
                 maxlength: '30', size: '4'}));
@@ -104,6 +162,15 @@ var MyLKPDKeys = (function() {
             row.points = field(node, S.qpoints, el('textarea', {name: 'qpoints[' + k + ']', 'class': 'form-control', rows: '3'}));
             row.points.value = data.points || '';
 
+            // Where the question is on the worksheet: clicking it copies its text into the Question field.
+            var qLine = el('div', {'class': 'mylkpd-keyrow-area mylkpd-keyrow-qarea'});
+            qLine.appendChild(el('strong', {}, S.qquestionarea + ': '));
+            row.qsummary = el('span', {'class': 'mylkpd-keyrow-summary'});
+            qLine.appendChild(row.qsummary);
+            row.pickq = el('button', {type: 'button', 'class': 'btn btn-sm btn-outline-secondary'}, S.qpickquestion);
+            qLine.appendChild(row.pickq);
+            node.insertBefore(qLine, row.question.parentNode.nextSibling);
+
             var areaLine = el('div', {'class': 'mylkpd-keyrow-area'});
             areaLine.appendChild(el('strong', {}, S.qarea + ': '));
             row.summary = el('span', {'class': 'mylkpd-keyrow-summary'});
@@ -119,10 +186,16 @@ var MyLKPDKeys = (function() {
             node.appendChild(row.anchor);
 
             row.pick.addEventListener('click', function() {
-                setActive(rows.indexOf(row));
+                setActive(rows.indexOf(row), 'answer');
+            });
+            row.pickq.addEventListener('click', function() {
+                setActive(rows.indexOf(row), 'question');
             });
             clear.addEventListener('click', function() {
+                var q = {qblocks: row.area.qblocks, qregions: row.area.qregions};
                 row.area = emptyArea();
+                row.area.qblocks = q.qblocks;
+                row.area.qregions = q.qregions;
                 sync(row);
             });
             remove.addEventListener('click', function() {
@@ -151,6 +224,14 @@ var MyLKPDKeys = (function() {
                 return;
             }
             var id = String(e.detail.id);
+            if (mode === 'question') {
+                if (row.area.qblocks.indexOf(id) < 0) {
+                    row.area.qblocks.push(id);
+                }
+                fillQuestion(row, e.detail.text);
+                sync(row);
+                return;
+            }
             var i = row.area.blocks.indexOf(id);
             if (i >= 0) {
                 row.area.blocks.splice(i, 1);
@@ -164,6 +245,14 @@ var MyLKPDKeys = (function() {
         document.addEventListener('mylkpd:anchorrect', function(e) {
             var row = rows[active];
             if (!row || e.detail.w < 1 || e.detail.h < 1) {
+                return;
+            }
+            if (mode === 'question') {
+                row.area.qregions = [e.detail];
+                api.textInRegion(e.detail).then(function(text) {
+                    fillQuestion(row, text);
+                    sync(row);
+                });
                 return;
             }
             row.area.regions.push(e.detail);

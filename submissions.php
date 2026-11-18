@@ -60,9 +60,16 @@ if ($aion) {
 $aicell = function(stdClass $mylkpd, ?stdClass $sub, array $target) {
     $text = '-';
     if ($sub && !empty($sub->airesult) && ($r = json_decode($sub->airesult, true))) {
-        $text = format_float($r['total'], 2) . ' / ' . format_float($r['max'], 2);
-        if ($mylkpd->grade > 0 && $r['max'] > 0) {
-            $text .= ' (' . format_float($r['total'] / $r['max'] * $mylkpd->grade, 2) . ')';
+        if (isset($r['total'])) {
+            $text = format_float($r['total'], 2) . ' / ' . format_float($r['max'], 2);
+            if ($mylkpd->grade > 0 && $r['max'] > 0) {
+                $text .= ' (' . format_float($r['total'] / $r['max'] * $mylkpd->grade, 2) . ')';
+            }
+            if (!empty($r['auto'])) {
+                $text .= ' · ' . get_string('aiautoshort', 'mod_mylkpd');
+            }
+        } else if (isset($r['error'])) {
+            $text = '⚠ ' . get_string('aiautofailedshort', 'mod_mylkpd');
         }
     }
     $cell = new html_table_cell(s($text));

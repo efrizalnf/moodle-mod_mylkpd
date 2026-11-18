@@ -83,7 +83,8 @@ foreach ($questions as $q) {
 }
 $strings = [];
 foreach (['qlabel', 'qquestion', 'qkey', 'qpoints', 'qmax', 'qarea', 'qareanone', 'qareablocks', 'qarearegions',
-        'qpick', 'qpicking', 'qclear', 'qremove', 'qdetected', 'qdetectnone', 'qconfirmreplace'] as $k) {
+        'qpick', 'qpicking', 'qclear', 'qremove', 'qdetected', 'qdetectnone', 'qconfirmreplace', 'qpickquestion',
+        'qpickingquestion', 'qquestionarea', 'qquestionnone', 'qquestionpicked'] as $k) {
     $strings[$k] = get_string($k, 'mod_mylkpd');
 }
 $PAGE->requires->js(new moodle_url('/mod/mylkpd/js/keys.js'));

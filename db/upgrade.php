@@ -142,5 +142,14 @@ function xmldb_mylkpd_upgrade($oldversion) {
         upgrade_mod_savepoint(true, 2026111803, 'mylkpd');
     }
 
+    if ($oldversion < 2026111900) {
+        $table = new xmldb_table('mylkpd');
+        $field = new xmldb_field('aiautotime', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0', 'teamsubmitmode');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+        upgrade_mod_savepoint(true, 2026111900, 'mylkpd');
+    }
+
     return true;
 }

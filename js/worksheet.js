@@ -180,6 +180,7 @@ var MyLKPD = (function() {
             return a && typeof a === 'object' && a.page && a.id;
         }) : [];
         var pages = {};
+        var pdfPageObjs = {};
         var elems = new Map();
         var labels = new Map();
         var owners = new WeakMap();
@@ -847,12 +848,16 @@ var MyLKPD = (function() {
                 updateLabel(item);
             }
             if (item.type === 'text' || item.type === 'check' || item.type === 'cross' ||
-                    item.type === 'math' || item.type === 'link' || item.type === 'image' || item.type === 'note') {
+                    item.type === 'math' || item.type === 'link' || item.type === 'image' || item.type === 'note' ||
+                    item.type === 'table') {
                 el.style.left = item.x + '%';
                 el.style.top = item.y + '%';
                 if (item.type === 'image') {
                     el.style.width = item.w + '%';
                     el.style.height = item.h + '%';
+                }
+                if (item.type === 'table') {
+                    el.style.width = item.w + '%'; // Height follows the rows.
                 }
                 if (item.type === 'note') {
                     // Open the bubble towards the middle of the page so it is never cut off.
@@ -1013,6 +1018,8 @@ var MyLKPD = (function() {
                 el = createText(item);
             } else if (item.type === 'note') {
                 el = createNote(item);
+            } else if (item.type === 'table') {
+                el = createTable(item);
             } else if (item.type === 'image') {
                 el = document.createElement('div');
                 el.className = 'mylkpd-item mylkpd-imageitem';
@@ -1063,6 +1070,7 @@ var MyLKPD = (function() {
                 el = svgEl('g', {'class': 'mylkpd-item'});
             }
             (el.namespaceURI === SVGNS ? page.svg : page.html).appendChild(el);
+            page.layer.parentNode.classList.remove('mylkpd-page-hidden');
             elems.set(item, el);
             owners.set(el, item);
             draw(item);
@@ -1084,6 +1092,9 @@ var MyLKPD = (function() {
                 el.parentNode.removeChild(el);
             }
             removeLabel(item);
+            if (toolsFor === item) {
+                hideTableTools();
+            }
             if (!silent) {
                 changed();
             }
@@ -1175,6 +1186,17 @@ var MyLKPD = (function() {
                     layer.setPointerCapture(e.pointerId);
                     return;
                 }
+                if (targetItem && targetItem.type === 'table' && tool !== 'erase' && tool !== 'move') {
+                    if (e.target.closest && e.target.closest('.mylkpd-table-grip')) {
+                        e.preventDefault();
+                        selectItem(targetItem);
+                        state = {mode: 'move', item: targetItem, start: p, orig: copy(targetItem)};
+                        layer.setPointerCapture(e.pointerId);
+                    } else {
+                        selectItem(targetItem); // Clicking a cell: let it take the cursor.
+                    }
+                    return;
+                }
                 if (targetItem && targetItem.type === 'image' && tool !== 'erase') {
                     // Pictures can always be dragged, whatever tool is active.
                     e.preventDefault();
@@ -1263,6 +1285,13 @@ var MyLKPD = (function() {
                 if (state.mode === 'move') {
                     moveItem(state, p);
                     draw(state.item);
+                    positionTableTools();
+                    return;
+                }
+                if (state.mode === 'resize' && state.item.type === 'table') {
+                    state.item.w = clamp(Math.max(10, Math.min(100 - state.orig.x, state.orig.w + (p.x - state.start.x))));
+                    draw(state.item);
+                    positionTableTools();
                     return;
                 }
                 if (state.mode === 'resize') {
@@ -1472,6 +1501,7 @@ var MyLKPD = (function() {
                 var chain = Promise.resolve();
                 var renderPage = function(num) {
                     return pdf.getPage(num).then(function(page) {
+                        pdfPageObjs[num] = page;
                         var base = page.getViewport({scale: 1});
                         var ratio = window.devicePixelRatio || 1;
                         var vp = page.getViewport({scale: (width / base.width) * ratio});
@@ -1484,7 +1514,25 @@ var MyLKPD = (function() {
                         wrap.appendChild(canvas);
                         container.appendChild(wrap);
                         setupPage(num, wrap);
-                        return page.render({canvasContext: canvas.getContext('2d'), viewport: vp}).promise;
+                        return page.render({canvasContext: canvas.getContext('2d'), viewport: vp}).promise.then(function() {
+                            // Sample the page at low resolution: all near-white means a blank page.
+                            var probe = document.createElement('canvas');
+                            probe.width = 60;
+                            probe.height = Math.max(1, Math.round(60 * canvas.height / canvas.width));
+                            var pctx = probe.getContext('2d');
+                            pctx.drawImage(canvas, 0, 0, probe.width, probe.height);
+                            var px = pctx.getImageData(0, 0, probe.width, probe.height).data;
+                            var blank = true;
+                            for (var i = 0; i < px.length; i += 4) {
+                                if (px[i + 3] > 10 && (px[i] < 245 || px[i + 1] < 245 || px[i + 2] < 245)) {
+                                    blank = false;
+                                    break;
+                                }
+                            }
+                            if (blank) {
+                                wrap.setAttribute('data-mylkpd-blank', '1');
+                            }
+                        });
                     });
                 };
                 for (var n = 1; n <= pdf.numPages; n++) {
@@ -1531,6 +1579,76 @@ var MyLKPD = (function() {
             });
         }
 
+        /**
+         * Removes empty paragraphs at the end of a Word page that only spill over the page height
+         * (docx-preview does not split pages by itself). Empty lines that fit on the page stay: teachers
+         * often leave them as writing space. Paragraphs a student already wrote in are never removed.
+         *
+         * @param {HTMLElement} holder
+         */
+        function trimOverflowingEmptyParagraphs(holder) {
+            var saved = cfg.blocks || {};
+            var all = holder.querySelectorAll('section.docx > article p');
+            var indexOf = new Map();
+            Array.prototype.forEach.call(all, function(p, i) {
+                indexOf.set(p, i);
+            });
+            var isEmpty = function(p) {
+                return !p.textContent.replace(/[\s\u00a0\u200b]/g, '') && !p.querySelector('img, svg, table, canvas, .mylkpd-math');
+            };
+            Array.prototype.forEach.call(holder.querySelectorAll('section.docx'), function(section) {
+                var article = section.querySelector(':scope > article');
+                var pageHeight = parseFloat(window.getComputedStyle(section).minHeight) || 0;
+                if (!article || !pageHeight) {
+                    return;
+                }
+                var guard = 500;
+                while (guard-- > 0 && section.getBoundingClientRect().height > pageHeight + 1) {
+                    var last = article.lastElementChild;
+                    if (!last || last.tagName !== 'P' || !isEmpty(last) || saved[String(indexOf.get(last))]) {
+                        break;
+                    }
+                    article.removeChild(last);
+                }
+            });
+        }
+
+        /**
+         * Whether a page shows nothing: a Word page without text, tables or pictures (a background picture
+         * alone does not count), or a PDF page whose rendering is plain white.
+         *
+         * @param {HTMLElement} host
+         * @return {Boolean}
+         */
+        function isBlankPage(host) {
+            if (host.getAttribute('data-mylkpd-blank') === '1') {
+                return true;
+            }
+            if (!host.classList.contains('docx')) {
+                return false;
+            }
+            var parts = host.querySelectorAll(':scope > article, :scope > header, :scope > footer');
+            for (var i = 0; i < parts.length; i++) {
+                if (parts[i].textContent.replace(/[\s\u00a0\u200b]/g, '') ||
+                        parts[i].querySelector('table, svg, canvas, img:not(.mylkpd-docx-bg)')) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        /**
+         * Hides blank pages (e.g. after a page break at the end of the document). Page numbers do not
+         * change, and a page with any answer or annotation on it is always shown.
+         */
+        function hideBlankPages() {
+            Object.keys(pages).forEach(function(num) {
+                var host = pages[num].layer.parentNode;
+                var hasWork = pages[num].html.children.length > 0 || pages[num].svg.children.length > 0;
+                host.classList.toggle('mylkpd-page-hidden', isBlankPage(host) && !hasWork);
+            });
+        }
+
         function renderDocx() {
             var holder = document.createElement('div');
             holder.className = 'mylkpd-docx';
@@ -1563,6 +1681,7 @@ var MyLKPD = (function() {
                 });
             }).then(function() {
                 fixFloatingImages(holder);
+                trimOverflowingEmptyParagraphs(holder);
                 if (canType) {
                     setupBlocks(holder);
                 }
@@ -1937,6 +2056,10 @@ var MyLKPD = (function() {
                 chooseImage();
                 return;
             }
+            if (kind === 'table') {
+                toggleTablePicker(button);
+                return;
+            }
             if (kind === 'symbol' || kind === 'arabic') {
                 togglePanel(kind, button);
                 return;
@@ -2135,6 +2258,536 @@ var MyLKPD = (function() {
             Array.prototype.forEach.call(document.querySelectorAll('[data-mylkpd-format]'), keepFocus);
         }
 
+        // ------------------------------------------------ Tables.
+
+        var TABLE_BORDERS = cfg.tableBorderColors || ['#111111', '#adb5bd', '#1a47b8', '#c62828', '#2e7d32', '#f9a825'];
+        var TABLE_FILLS = cfg.tableFillColors || ['#fff3cd', '#d1e7dd', '#cfe2ff', '#f8d7da', '#e2e3e5', '#ffe5d0'];
+        var lastCell = null;
+        var tableTools = null;
+        var toolsFor = null;
+
+        function normaliseTable(item) {
+            item.rows = Math.max(1, Math.min(20, item.rows || 1));
+            item.cols = Math.max(1, Math.min(8, item.cols || 1));
+            var cells = [];
+            for (var r = 0; r < item.rows; r++) {
+                cells[r] = [];
+                for (var c = 0; c < item.cols; c++) {
+                    cells[r][c] = (item.cells && item.cells[r] && item.cells[r][c]) || '';
+                }
+            }
+            item.cells = cells;
+            if (!item.fills || Array.isArray(item.fills)) {
+                item.fills = {};
+            }
+        }
+
+        function styleTable(item, table) {
+            table.classList.toggle('mylkpd-table-noborder', item.bstyle === 'none');
+            Array.prototype.forEach.call(table.querySelectorAll('td'), function(td) {
+                var r = +td.getAttribute('data-r');
+                var c = +td.getAttribute('data-c');
+                td.style.border = item.bstyle === 'none' ? '' :
+                    (item.bwidth || 1) + 'px ' + (item.bstyle || 'solid') + ' ' + (item.bcolor || '#111111');
+                td.style.background = item.fills[r + '-' + c] || (r === 0 && item.head ? item.head : '');
+                td.classList.toggle('mylkpd-table-head', r === 0 && !!item.head);
+            });
+        }
+
+        function renderTable(item, table) {
+            normaliseTable(item);
+            table.textContent = '';
+            var editable = canEdit(item);
+            item.cells.forEach(function(row, r) {
+                var tr = document.createElement('tr');
+                row.forEach(function(text, c) {
+                    var td = document.createElement('td');
+                    td.setAttribute('data-r', r);
+                    td.setAttribute('data-c', c);
+                    var cell = document.createElement('div');
+                    cell.className = 'mylkpd-cell';
+                    cell.textContent = text;
+                    cell.dir = 'auto';
+                    if (editable) {
+                        cell.contentEditable = 'true';
+                        cell.spellcheck = false;
+                        bindCell(item, cell, r, c);
+                    }
+                    td.appendChild(cell);
+                    tr.appendChild(td);
+                });
+                table.appendChild(tr);
+            });
+            styleTable(item, table);
+        }
+
+        function bindCell(item, cell, r, c) {
+            var before = null;
+            cell.addEventListener('focus', function() {
+                lastCell = {item: item, r: r, c: c};
+                before = copy(item);
+                selectItem(item);
+            });
+            cell.addEventListener('input', function() {
+                if (before) {
+                    recordUndo([{id: item.id, before: before}]);
+                    before = null;
+                }
+                item.cells[r][c] = cell.innerText.replace(/\n$/, '');
+                claim(item);
+                changed();
+                positionTableTools();
+            });
+            cell.addEventListener('keydown', function(e) {
+                if (e.key === 'Tab') {
+                    // Tab / Shift+Tab move between cells, like in a word processor.
+                    e.preventDefault();
+                    var cells = Array.prototype.slice.call(elems.get(item).querySelectorAll('.mylkpd-cell'));
+                    var next = cells[cells.indexOf(cell) + (e.shiftKey ? -1 : 1)];
+                    if (next) {
+                        next.focus();
+                    }
+                } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    document.execCommand('insertLineBreak');
+                }
+            });
+            cell.addEventListener('paste', function(e) {
+                e.preventDefault();
+                document.execCommand('insertText', false, (e.clipboardData || window.clipboardData).getData('text'));
+            });
+        }
+
+        function createTable(item) {
+            var el = document.createElement('div');
+            el.className = 'mylkpd-item mylkpd-tableitem';
+            if (canEdit(item)) {
+                var grip = document.createElement('span');
+                grip.className = 'mylkpd-table-grip';
+                grip.textContent = '\u283F';
+                grip.title = cfg.strings.tablemove;
+                el.appendChild(grip);
+            }
+            var table = document.createElement('table');
+            table.className = 'mylkpd-table';
+            el.appendChild(table);
+            renderTable(item, table);
+            if (canEdit(item)) {
+                var handle = document.createElement('span');
+                handle.className = 'mylkpd-resize';
+                handle.title = cfg.strings.resize;
+                el.appendChild(handle);
+            }
+            return el;
+        }
+
+        /**
+         * Changes a table (structure or look) with one undo step, then redraws it.
+         *
+         * @param {Object} item
+         * @param {Function} change
+         */
+        function editTable(item, change) {
+            recordUndo([{id: item.id, before: copy(item)}]);
+            change();
+            var el = elems.get(item);
+            if (el) {
+                renderTable(item, el.querySelector('table'));
+            }
+            claim(item);
+            changed();
+            positionTableTools();
+        }
+
+        function moveFills(item, map) {
+            var fills = {};
+            Object.keys(item.fills).forEach(function(key) {
+                var p = key.split('-').map(Number);
+                var to = map(p[0], p[1]);
+                if (to) {
+                    fills[to[0] + '-' + to[1]] = item.fills[key];
+                }
+            });
+            item.fills = fills;
+        }
+
+        function tableAction(action) {
+            var item = toolsFor;
+            if (!item) {
+                return;
+            }
+            var at = (lastCell && lastCell.item === item) ? lastCell : {r: item.rows - 1, c: item.cols - 1};
+            editTable(item, function() {
+                if (action === 'addrow' && item.rows < 20) {
+                    item.cells.splice(at.r + 1, 0, new Array(item.cols).fill(''));
+                    item.rows++;
+                    moveFills(item, function(r, c) {
+                        return [r > at.r ? r + 1 : r, c];
+                    });
+                } else if (action === 'addcol' && item.cols < 8) {
+                    item.cells.forEach(function(row) {
+                        row.splice(at.c + 1, 0, '');
+                    });
+                    item.cols++;
+                    moveFills(item, function(r, c) {
+                        return [r, c > at.c ? c + 1 : c];
+                    });
+                } else if (action === 'delrow' && item.rows > 1) {
+                    item.cells.splice(at.r, 1);
+                    item.rows--;
+                    moveFills(item, function(r, c) {
+                        return r === at.r ? null : [r > at.r ? r - 1 : r, c];
+                    });
+                    lastCell = null;
+                } else if (action === 'delcol' && item.cols > 1) {
+                    item.cells.forEach(function(row) {
+                        row.splice(at.c, 1);
+                    });
+                    item.cols--;
+                    moveFills(item, function(r, c) {
+                        return c === at.c ? null : [r, c > at.c ? c - 1 : c];
+                    });
+                    lastCell = null;
+                }
+            });
+        }
+
+        // ---- The mini toolbar above a selected table.
+
+        function swatchRow(colors, current, onPick, withNone) {
+            var row = document.createElement('div');
+            row.className = 'mylkpd-tablepop-swatches';
+            (withNone ? [''].concat(colors) : colors).forEach(function(color) {
+                var b = document.createElement('button');
+                b.type = 'button';
+                b.className = 'mylkpd-swatch mylkpd-swatch-sm' + (color === current ? ' active' : '') + (color ? '' : ' mylkpd-swatch-none');
+                b.style.backgroundColor = color || '#fff';
+                b.title = color || cfg.strings.tablenofill;
+                b.setAttribute('aria-label', b.title);
+                b.addEventListener('click', function() {
+                    onPick(color);
+                });
+                row.appendChild(b);
+            });
+            return row;
+        }
+
+        function popLabel(text) {
+            var l = document.createElement('div');
+            l.className = 'mylkpd-tablepop-label';
+            l.textContent = text;
+            return l;
+        }
+
+        function fillPopover(kind, pop) {
+            var item = toolsFor;
+            pop.textContent = '';
+            if (kind === 'border') {
+                pop.appendChild(popLabel(cfg.strings.tablestyle));
+                var styles = document.createElement('div');
+                styles.className = 'mylkpd-tablepop-options';
+                [['solid', cfg.strings.tablesolid], ['dashed', cfg.strings.tabledashed], ['dotted', cfg.strings.tabledotted],
+                    ['none', cfg.strings.tablenoborder]].forEach(function(o) {
+                    var b = document.createElement('button');
+                    b.type = 'button';
+                    b.className = 'mylkpd-borderopt' + ((item.bstyle || 'solid') === o[0] ? ' active' : '');
+                    b.title = o[1];
+                    b.setAttribute('aria-label', o[1]);
+                    var line = document.createElement('span');
+                    line.style.borderTop = o[0] === 'none' ? '2px dashed #d0d4d9' : '2px ' + o[0] + ' #212529';
+                    b.appendChild(line);
+                    b.addEventListener('click', function() {
+                        editTable(item, function() {
+                            item.bstyle = o[0];
+                        });
+                        fillPopover(kind, pop);
+                    });
+                    styles.appendChild(b);
+                });
+                pop.appendChild(styles);
+                pop.appendChild(popLabel(cfg.strings.tablethickness));
+                var widths = document.createElement('div');
+                widths.className = 'mylkpd-tablepop-options';
+                [1, 2, 3].forEach(function(w) {
+                    var b = document.createElement('button');
+                    b.type = 'button';
+                    b.className = 'mylkpd-borderopt' + ((item.bwidth || 1) === w ? ' active' : '');
+                    b.title = w + ' px';
+                    var line = document.createElement('span');
+                    line.style.borderTop = w + 'px solid #212529';
+                    b.appendChild(line);
+                    b.addEventListener('click', function() {
+                        editTable(item, function() {
+                            item.bwidth = w;
+                        });
+                        fillPopover(kind, pop);
+                    });
+                    widths.appendChild(b);
+                });
+                pop.appendChild(widths);
+                pop.appendChild(popLabel(cfg.strings.tablebordercolor));
+                pop.appendChild(swatchRow(TABLE_BORDERS, item.bcolor || '#111111', function(color) {
+                    editTable(item, function() {
+                        item.bcolor = color;
+                        if (item.bstyle === 'none') {
+                            item.bstyle = 'solid';
+                        }
+                    });
+                    fillPopover(kind, pop);
+                }, false));
+            } else {
+                pop.appendChild(popLabel(cfg.strings.tableheader));
+                pop.appendChild(swatchRow(TABLE_FILLS, item.head || '', function(color) {
+                    editTable(item, function() {
+                        item.head = color;
+                    });
+                    fillPopover(kind, pop);
+                }, true));
+                pop.appendChild(popLabel(cfg.strings.tablecell));
+                var cell = (lastCell && lastCell.item === item) ? lastCell : null;
+                var key = cell ? cell.r + '-' + cell.c : null;
+                var row = swatchRow(TABLE_FILLS, key ? (item.fills[key] || '') : null, function(color) {
+                    if (!key) {
+                        return;
+                    }
+                    editTable(item, function() {
+                        if (color) {
+                            item.fills[key] = color;
+                        } else {
+                            delete item.fills[key];
+                        }
+                    });
+                    fillPopover(kind, pop);
+                }, true);
+                if (!key) {
+                    row.classList.add('mylkpd-disabled');
+                }
+                pop.appendChild(row);
+            }
+        }
+
+        function buildTableTools() {
+            var bar = document.createElement('div');
+            bar.className = 'mylkpd-tabletools';
+            bar.setAttribute('role', 'toolbar');
+            bar.setAttribute('aria-label', cfg.strings.table);
+            keepFocus(bar);
+            var pop = document.createElement('div');
+            pop.className = 'mylkpd-tablepop';
+            var openPop = null;
+            var button = function(label, title, onClick, cls) {
+                var b = document.createElement('button');
+                b.type = 'button';
+                b.className = 'mylkpd-tt-btn' + (cls ? ' ' + cls : '');
+                b.innerHTML = label;
+                b.title = title;
+                b.setAttribute('aria-label', title);
+                b.addEventListener('click', onClick);
+                bar.appendChild(b);
+                return b;
+            };
+            var sep = function() {
+                var s = document.createElement('span');
+                s.className = 'mylkpd-tt-sep';
+                bar.appendChild(s);
+            };
+            var plus = '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5" fill="none" stroke="currentColor"/>';
+            button(plus + '<path d="M1.5 8h13" stroke="currentColor"/><path d="M8 4.5v7M4.5 8h7" stroke="#0f6cbf" stroke-width="2"/></svg>',
+                cfg.strings.tableaddrow, function() {
+                    tableAction('addrow');
+                });
+            button(plus + '<path d="M8 2.5v11" stroke="currentColor"/><path d="M8 4.5v7M4.5 8h7" stroke="#0f6cbf" stroke-width="2"/></svg>',
+                cfg.strings.tableaddcol, function() {
+                    tableAction('addcol');
+                });
+            button(plus + '<path d="M1.5 8h13" stroke="currentColor"/><path d="M4.5 8h7" stroke="#c62828" stroke-width="2"/></svg>',
+                cfg.strings.tabledelrow, function() {
+                    tableAction('delrow');
+                });
+            button(plus + '<path d="M8 2.5v11" stroke="currentColor"/><path d="M8 4.5v7" stroke="#c62828" stroke-width="2"/></svg>',
+                cfg.strings.tabledelcol, function() {
+                    tableAction('delcol');
+                });
+            sep();
+            var popButton = function(kind, label, title) {
+                var b = button(label + ' <span class="mylkpd-tt-caret">\u25BE</span>', title, function() {
+                    if (openPop === kind) {
+                        pop.style.display = 'none';
+                        openPop = null;
+                        return;
+                    }
+                    openPop = kind;
+                    fillPopover(kind, pop);
+                    pop.style.display = 'block';
+                    pop.style.left = b.offsetLeft + 'px';
+                    // Open away from the table so the menu never covers it.
+                    var tableEl = toolsFor ? elems.get(toolsFor) : null;
+                    var above = tableEl && bar.getBoundingClientRect().top < tableEl.getBoundingClientRect().top;
+                    pop.style.top = above ? 'auto' : 'calc(100% + 6px)';
+                    pop.style.bottom = above ? 'calc(100% + 6px)' : 'auto';
+                }, 'mylkpd-tt-pop');
+                return b;
+            };
+            popButton('border', '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><rect x="1.5" y="1.5" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 1.5v13M1.5 8h13" stroke="currentColor" stroke-dasharray="2 1.5"/></svg> ' +
+                cfg.strings.tableborder, cfg.strings.tableborder);
+            popButton('color', '<span class="mylkpd-tt-paint"></span> ' + cfg.strings.tablecolor, cfg.strings.tablecolor);
+            sep();
+            button('&#128465;', cfg.strings.tabledelete, function() {
+                var item = toolsFor;
+                if (item) {
+                    recordUndo([{id: item.id, before: copy(item)}]);
+                    hideTableTools();
+                    removeItem(item);
+                }
+            }, 'mylkpd-tt-danger');
+            bar.appendChild(pop);
+            bar.closePop = function() {
+                pop.style.display = 'none';
+                openPop = null;
+            };
+            document.body.appendChild(bar);
+            window.addEventListener('scroll', positionTableTools, true);
+            window.addEventListener('resize', positionTableTools);
+            // A click anywhere else closes the open menu; outside the table it also deselects the table.
+            document.addEventListener('pointerdown', function(e) {
+                if (!toolsFor || bar.contains(e.target)) {
+                    return;
+                }
+                bar.closePop();
+                if (!(e.target.closest && e.target.closest('.mylkpd-tableitem'))) {
+                    selectItem(null);
+                }
+            }, true);
+            return bar;
+        }
+
+        function positionTableTools() {
+            if (!tableTools || !toolsFor || tableTools.style.display === 'none') {
+                return;
+            }
+            var el = elems.get(toolsFor);
+            if (!el || !document.body.contains(el)) {
+                hideTableTools();
+                return;
+            }
+            var r = el.getBoundingClientRect();
+            var h = tableTools.offsetHeight;
+            var top = r.top - h - 8;
+            if (top < (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--mylkpd-sticky-top')) || 0) + 70) {
+                top = r.bottom + 8; // No room above (toolbar in the way): show it under the table.
+            }
+            tableTools.style.top = Math.round(top) + 'px';
+            tableTools.style.left = Math.round(Math.max(8, Math.min(r.left, window.innerWidth - tableTools.offsetWidth - 8))) + 'px';
+        }
+
+        function showTableTools(item) {
+            if (!canEdit(item)) {
+                return;
+            }
+            tableTools = tableTools || buildTableTools();
+            if (toolsFor !== item) {
+                tableTools.closePop();
+            }
+            toolsFor = item;
+            tableTools.style.display = 'flex';
+            positionTableTools();
+        }
+
+        function hideTableTools() {
+            if (tableTools) {
+                tableTools.style.display = 'none';
+                tableTools.closePop();
+            }
+            toolsFor = null;
+        }
+
+        // ---- Size picker for a new table (like a word processor's grid).
+
+        var tablePicker = null;
+
+        function toggleTablePicker(button) {
+            if (tablePicker && tablePicker.style.display === 'block') {
+                tablePicker.style.display = 'none';
+                return;
+            }
+            if (!tablePicker) {
+                tablePicker = document.createElement('div');
+                tablePicker.className = 'mylkpd-tablepicker';
+                keepFocus(tablePicker);
+                var label = document.createElement('div');
+                label.className = 'mylkpd-tablepicker-label';
+                var grid = document.createElement('div');
+                grid.className = 'mylkpd-tablepicker-grid';
+                var cells = [];
+                var mark = function(rows, cols) {
+                    cells.forEach(function(c) {
+                        c.classList.toggle('on', +c.getAttribute('data-r') < rows && +c.getAttribute('data-c') < cols);
+                    });
+                    label.textContent = rows ? rows + ' \u00d7 ' + cols : cfg.strings.tablepick;
+                };
+                for (var r = 0; r < 8; r++) {
+                    for (var c = 0; c < 8; c++) {
+                        var cell = document.createElement('button');
+                        cell.type = 'button';
+                        cell.setAttribute('data-r', r);
+                        cell.setAttribute('data-c', c);
+                        cell.setAttribute('aria-label', (r + 1) + ' \u00d7 ' + (c + 1));
+                        (function(rows, cols, el) {
+                            el.addEventListener('mouseenter', function() {
+                                mark(rows, cols);
+                            });
+                            el.addEventListener('focus', function() {
+                                mark(rows, cols);
+                            });
+                            el.addEventListener('click', function() {
+                                tablePicker.style.display = 'none';
+                                insertTable(rows, cols);
+                            });
+                        })(r + 1, c + 1, cell);
+                        cells.push(cell);
+                        grid.appendChild(cell);
+                    }
+                }
+                tablePicker.appendChild(grid);
+                tablePicker.appendChild(label);
+                grid.addEventListener('mouseleave', function() {
+                    mark(0, 0);
+                });
+                mark(0, 0);
+                document.body.appendChild(tablePicker);
+                document.addEventListener('mousedown', function(e) {
+                    if (tablePicker.style.display === 'block' && !tablePicker.contains(e.target) &&
+                            !(e.target.closest && e.target.closest('[data-mylkpd-insert="table"]'))) {
+                        tablePicker.style.display = 'none';
+                    }
+                });
+            }
+            var r = button.getBoundingClientRect();
+            tablePicker.style.display = 'block';
+            tablePicker.style.left = Math.round(Math.min(r.left, window.innerWidth - tablePicker.offsetWidth - 8)) + 'px';
+            tablePicker.style.top = Math.round(r.bottom + 6) + 'px';
+        }
+
+        function insertTable(rows, cols) {
+            var target = visiblePage();
+            if (!target) {
+                return;
+            }
+            var it = {id: newId(), page: target.num, type: 'table', x: 15, y: clamp(Math.max(2, target.cy - rows * 1.5)),
+                w: 70, rows: rows, cols: cols, cells: [], bstyle: 'solid', bwidth: 1, bcolor: '#111111', head: '',
+                fills: {}, color: color, by: cfg.userid};
+            normaliseTable(it);
+            recordUndo([{id: it.id, before: null}]);
+            items.push(it);
+            var el = createEl(it);
+            changed();
+            selectItem(it);
+            var first = el && el.querySelector('.mylkpd-cell');
+            if (first) {
+                first.focus();
+            }
+        }
+
         // ------------------------------------------------ Pictures.
 
         function imageUrl(file) {
@@ -2148,6 +2801,11 @@ var MyLKPD = (function() {
             var el = item ? elems.get(item) : null;
             if (el) {
                 el.classList.add('mylkpd-selected');
+            }
+            if (item && item.type === 'table') {
+                showTableTools(item);
+            } else {
+                hideTableTools();
             }
         }
 
@@ -2319,7 +2977,7 @@ var MyLKPD = (function() {
                 if (el.classList.contains('mylkpd-anchor-rect')) {
                     el.parentNode.removeChild(el);
                 } else {
-                    el.classList.remove('mylkpd-anchor-block', 'mylkpd-anchor-active', 'mylkpd-verdict-right',
+                    el.classList.remove('mylkpd-anchor-block', 'mylkpd-anchor-active', 'mylkpd-anchor-q', 'mylkpd-verdict-right',
                         'mylkpd-verdict-partial', 'mylkpd-verdict-wrong', 'mylkpd-verdict-unknown');
                     el.removeAttribute('data-mylkpd-anchor');
                 }
@@ -2335,6 +2993,7 @@ var MyLKPD = (function() {
                         if (q.verdict) {
                             el.classList.add('mylkpd-verdict-' + q.verdict);
                         }
+                        el.classList.toggle('mylkpd-anchor-q', !!q.question);
                         el.setAttribute('data-mylkpd-anchor', q.label);
                         anchorMarks.push(el);
                     }
@@ -2346,7 +3005,7 @@ var MyLKPD = (function() {
                     }
                     var box = document.createElement('div');
                     box.className = 'mylkpd-anchor-rect' + (q.active ? ' mylkpd-anchor-active' : '') +
-                        (q.verdict ? ' mylkpd-verdict-' + q.verdict : '');
+                        (q.verdict ? ' mylkpd-verdict-' + q.verdict : '') + (q.question ? ' mylkpd-anchor-q' : '');
                     box.style.left = r.x + '%';
                     box.style.top = r.y + '%';
                     box.style.width = r.w + '%';
@@ -2396,6 +3055,66 @@ var MyLKPD = (function() {
                 }
                 return {label: q.label, question: q.question, blocks: blocks, original: original, region: region};
             });
+        }
+
+        /**
+         * Text inside a box on a page: the Word paragraphs whose middle is inside it, or the words of the
+         * PDF's own text layer that sit inside it (in reading order).
+         *
+         * @param {Object} r {page, x, y, w, h} in page percent
+         * @return {Promise} resolves with the text
+         */
+        function textInRegion(r) {
+            var inside = function(x, y) {
+                return x >= r.x && x <= r.x + r.w && y >= r.y - 1 && y <= r.y + r.h + 1;
+            };
+            var pdfPage = pdfPageObjs[r.page];
+            if (pdfPage) {
+                var vp = pdfPage.getViewport({scale: 1});
+                return pdfPage.getTextContent().then(function(content) {
+                    var parts = [];
+                    content.items.forEach(function(it) {
+                        if (!it.str || !it.str.trim()) {
+                            return;
+                        }
+                        var pt = vp.convertToViewportPoint(it.transform[4], it.transform[5]);
+                        var x = pt[0] / vp.width * 100;
+                        var y = pt[1] / vp.height * 100;
+                        if (inside(x, y)) {
+                            parts.push({x: x, y: y, s: it.str});
+                        }
+                    });
+                    parts.sort(function(a, b) {
+                        return Math.abs(a.y - b.y) > 1.2 ? a.y - b.y : a.x - b.x;
+                    });
+                    var text = '';
+                    parts.forEach(function(part, i) {
+                        text += (i === 0 ? '' : (Math.abs(part.y - parts[i - 1].y) > 1.2 ? '\n' : ' ')) + part.s;
+                    });
+                    return text.replace(/[ \t]+/g, ' ').trim();
+                });
+            }
+            var page = pages[r.page];
+            if (!page) {
+                return Promise.resolve('');
+            }
+            var lr = page.layer.getBoundingClientRect();
+            var texts = [];
+            Object.keys(blockEls).sort(function(a, b) {
+                return a - b;
+            }).forEach(function(id) {
+                var el = blockEls[id];
+                var br = el.getBoundingClientRect();
+                if (pageOfElement(el) !== r.page || !br.height) {
+                    return;
+                }
+                var cx = (br.left + br.width / 2 - lr.left) / lr.width * 100;
+                var cy = (br.top + br.height / 2 - lr.top) / lr.height * 100;
+                if (inside(cx, cy) && el.textContent.trim()) {
+                    texts.push(el.textContent.trim());
+                }
+            });
+            return Promise.resolve(texts.join('\n'));
         }
 
         function emit(name, detail) {
@@ -2735,10 +3454,11 @@ var MyLKPD = (function() {
             return cfg.mode === 'docx' ? renderDocx() : renderPdf(width0);
         }).then(function() {
             rebuild();
+            hideBlankPages();
             if (cfg.anchorEditor) {
                 bindAnchorEditor();
             }
-            MyLKPD.current = {showAnchors: showAnchors, detectQuestions: detectQuestions, canType: canType,
+            MyLKPD.current = {showAnchors: showAnchors, detectQuestions: detectQuestions, textInRegion: textInRegion, canType: canType,
                 workmode: cfg.workmode};
             emit('ready', MyLKPD.current);
             if (cfg.collab) {

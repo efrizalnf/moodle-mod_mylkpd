@@ -30,6 +30,24 @@ function mylkpd_colors(): array {
 }
 
 /**
+ * Border colours offered for tables.
+ *
+ * @return string[]
+ */
+function mylkpd_table_border_colors(): array {
+    return ['#111111', '#adb5bd', '#1a47b8', '#c62828', '#2e7d32', '#f9a825'];
+}
+
+/**
+ * Light fill colours offered for table header rows and cells.
+ *
+ * @return string[]
+ */
+function mylkpd_table_fill_colors(): array {
+    return ['#fff3cd', '#d1e7dd', '#cfe2ff', '#f8d7da', '#e2e3e5', '#ffe5d0'];
+}
+
+/**
  * Stores the display mode chosen for this activity.
  *
  * @param stdClass $mylkpd
@@ -177,6 +195,34 @@ function mylkpd_clean_item($a): ?array {
                 return null;
             }
             $item += ['x' => $pct($a['x'] ?? 0), 'y' => $pct($a['y'] ?? 0), 'tex' => $tex];
+            break;
+        case 'table':
+            // A table the student (or teacher) put on the page: cells are plain text.
+            $rows = max(1, min(20, (int) ($a['rows'] ?? 2)));
+            $cols = max(1, min(8, (int) ($a['cols'] ?? 2)));
+            $cells = [];
+            for ($r = 0; $r < $rows; $r++) {
+                for ($c = 0; $c < $cols; $c++) {
+                    $value = $a['cells'][$r][$c] ?? '';
+                    $cells[$r][$c] = core_text::substr(clean_param(is_scalar($value) ? (string) $value : '', PARAM_TEXT), 0, 500);
+                }
+            }
+            $fills = [];
+            foreach ((array) ($a['fills'] ?? []) as $key => $fill) {
+                if (preg_match('/^(\d+)-(\d+)$/', (string) $key, $m) && $m[1] < $rows && $m[2] < $cols &&
+                        in_array($fill, mylkpd_table_fill_colors(), true)) {
+                    $fills[$key] = $fill;
+                }
+            }
+            $item += [
+                'x' => $pct($a['x'] ?? 0), 'y' => $pct($a['y'] ?? 0), 'w' => max(10, $pct($a['w'] ?? 60)),
+                'rows' => $rows, 'cols' => $cols, 'cells' => $cells,
+                'bstyle' => in_array($a['bstyle'] ?? '', ['solid', 'dashed', 'dotted', 'none'], true) ? $a['bstyle'] : 'solid',
+                'bwidth' => in_array((int) ($a['bwidth'] ?? 1), [1, 2, 3], true) ? (int) $a['bwidth'] : 1,
+                'bcolor' => in_array($a['bcolor'] ?? '', mylkpd_table_border_colors(), true) ? $a['bcolor'] : '#111111',
+                'head' => in_array($a['head'] ?? '', mylkpd_table_fill_colors(), true) ? $a['head'] : '',
+                'fills' => (object) $fills,
+            ];
             break;
         case 'note':
             // Teacher's sticky note on the page (only teachers may create them, see mylkpd_sync()).
@@ -626,6 +672,89 @@ function mylkpd_cleanup_images(context_module $context, stdClass $submission): v
 }
 
 /**
+ * Feedback text from an AI result ("No. 1: …" per question).
+ *
+ * @param array $result
+ * @return string
+ */
+function mylkpd_ai_feedback_text(array $result): string {
+    $lines = [];
+    foreach ($result['items'] ?? [] as $item) {
+        if (!empty($item['feedback'])) {
+            $lines[] = get_string('ainumber', 'mod_mylkpd') . ' ' . ($item['label'] ?: '-') . ': ' . $item['feedback'];
+        }
+    }
+    return implode("\n", $lines);
+}
+
+/**
+ * Scheduled AI grading: checks submitted work in activities whose automatic check time has come and saves
+ * the grade and feedback. Work the teacher already graded is left alone. Work submitted later (also after
+ * the scheduled time) is checked in a later run.
+ *
+ * @param int $budget most submissions to check in this run
+ * @param callable|null $log receives progress messages
+ * @return array ['checked' => int, 'graded' => int, 'failed' => int]
+ */
+function mylkpd_ai_autocheck_run(int $budget = 40, ?callable $log = null): array {
+    global $DB;
+    $stats = ['checked' => 0, 'graded' => 0, 'failed' => 0];
+    $log = $log ?? function($m) {
+    };
+    if (!\mod_mylkpd\ai\client::site_enabled()) {
+        return $stats;
+    }
+    $instances = $DB->get_records_select('mylkpd', 'aienabled = 1 AND aiautotime > 0 AND aiautotime <= ?', [time()]);
+    foreach ($instances as $mylkpd) {
+        if ($budget <= 0) {
+            break;
+        }
+        $cm = get_coursemodule_from_instance('mylkpd', $mylkpd->id, $mylkpd->course, false, IGNORE_MISSING);
+        $questions = mylkpd_get_questions($mylkpd);
+        if (!$cm || !$questions) {
+            continue;
+        }
+        // Submitted, not graded by the teacher, and not yet checked since it was (last) submitted.
+        $subs = $DB->get_records_select('mylkpd_submissions',
+            'mylkpdid = ? AND status = ? AND timegraded = 0 AND (aitime = 0 OR aitime < timesubmitted)',
+            [$mylkpd->id, MYLKPD_STATUS_SUBMITTED], 'timesubmitted ASC', '*', 0, $budget);
+        if (!$subs) {
+            continue;
+        }
+        $rubric = (bool) mylkpd_grading_controller($mylkpd, context_module::instance($cm->id));
+        foreach ($subs as $sub) {
+            $budget--;
+            $stats['checked']++;
+            $now = time();
+            try {
+                $result = \mod_mylkpd\ai\grader::check($questions, mylkpd_decode_data($sub->answers));
+                $result['auto'] = 1;
+                $update = (object) ['id' => $sub->id, 'airesult' => json_encode($result, JSON_UNESCAPED_UNICODE),
+                    'aitime' => $now];
+                // A rubric has to be filled in by the teacher: then only the suggestion is kept.
+                if (!$rubric && $mylkpd->grade > 0 && $result['max'] > 0) {
+                    $update->grade = round($result['total'] / $result['max'] * $mylkpd->grade, 2);
+                    $update->feedback = trim(mylkpd_ai_feedback_text($result) . "\n\n" .
+                        get_string('aiautonote', 'mod_mylkpd'));
+                    $update->timegraded = $now;
+                    $stats['graded']++;
+                }
+                $DB->update_record('mylkpd_submissions', $update);
+                $log("MyLKPD {$mylkpd->id}: submission {$sub->id} checked ({$result['total']}/{$result['max']})");
+            } catch (\Throwable $e) {
+                // Remember the failure so the same work is not retried every run; the teacher can check it by hand.
+                $DB->update_record('mylkpd_submissions', (object) ['id' => $sub->id, 'aitime' => $now,
+                    'airesult' => json_encode(['error' => $e->getMessage(), 'time' => $now, 'auto' => 1], JSON_UNESCAPED_UNICODE)]);
+                $stats['failed']++;
+                $log("MyLKPD {$mylkpd->id}: submission {$sub->id} failed: " . $e->getMessage());
+            }
+        }
+        mylkpd_update_grades($mylkpd);
+    }
+    return $stats;
+}
+
+/**
  * Members shown in the editor (names and a colour each).
  *
  * @param int[] $userids
@@ -780,9 +909,16 @@ function mylkpd_ai_enabled(stdClass $mylkpd): bool {
  */
 function mylkpd_clean_anchor($raw): array {
     $a = is_array($raw) ? $raw : json_decode((string) $raw, true);
-    $out = ['blocks' => [], 'original' => [], 'regions' => []];
+    $out = ['blocks' => [], 'original' => [], 'regions' => [], 'qblocks' => [], 'qregions' => []];
     if (!is_array($a)) {
         return $out;
+    }
+    // Where the question itself is on the worksheet (only to show it again in the answer key editor).
+    foreach (array_slice((array) ($a['qblocks'] ?? []), 0, 30) as $id) {
+        $id = (string) $id;
+        if (ctype_digit($id) && (int) $id < 100000 && !in_array($id, $out['qblocks'], true)) {
+            $out['qblocks'][] = $id;
+        }
     }
     foreach (array_slice((array) ($a['blocks'] ?? []), 0, 60) as $id) {
         $id = (string) $id;
@@ -803,6 +939,15 @@ function mylkpd_clean_anchor($raw): array {
             'y' => $pct($r['y'] ?? 0), 'w' => $pct($r['w'] ?? 0), 'h' => $pct($r['h'] ?? 0)];
         if ($region['w'] >= 1 && $region['h'] >= 1) {
             $out['regions'][] = $region;
+        }
+    }
+    foreach (array_slice((array) ($a['qregions'] ?? []), 0, 4) as $r) {
+        if (is_array($r)) {
+            $region = ['page' => max(1, min(1000, (int) ($r['page'] ?? 1))), 'x' => $pct($r['x'] ?? 0),
+                'y' => $pct($r['y'] ?? 0), 'w' => $pct($r['w'] ?? 0), 'h' => $pct($r['h'] ?? 0)];
+            if ($region['w'] >= 1 && $region['h'] >= 1) {
+                $out['qregions'][] = $region;
+            }
         }
     }
     return $out;
@@ -1046,7 +1191,7 @@ function mylkpd_render_toolbar(bool $cantype, string $defaulttool, string $teamb
     }
     $row2 .= $group($style, $s('color'), 'mylkpd-style');
     $buttons = '';
-    foreach (['image' => '&#128444;', 'math' => '&#8721;', 'symbol' => '&#937;', 'arabic' => '&#1593;',
+    foreach (['image' => '&#128444;', 'table' => '&#9638;', 'math' => '&#8721;', 'symbol' => '&#937;', 'arabic' => '&#1593;',
             'link' => '&#128279;'] as $what => $icon) {
         $buttons .= mylkpd_toolbar_button('insert', $what, $icon, $s('insert' . $what));
     }
@@ -1161,6 +1306,8 @@ function mylkpd_render_worksheet(stdClass $mylkpd, $cm, context_module $context,
         'teacherIds' => $people['teachers'],
         'target' => $isteacher ? ['targetuser' => $teacherfor['userid'], 'targetgroup' => $teacherfor['groupid']] : null,
         'colors' => mylkpd_colors(),
+        'tableBorderColors' => mylkpd_table_border_colors(),
+        'tableFillColors' => mylkpd_table_fill_colors(),
         'items' => $data['items'],
         'blocks' => $data['blocks'],
         'members' => (object) $people['members'],
@@ -1201,6 +1348,26 @@ function mylkpd_render_worksheet(stdClass $mylkpd, $cm, context_module $context,
             'imagehint' => get_string('imagehint', 'mod_mylkpd'),
             'resize' => get_string('imageresize', 'mod_mylkpd'),
             'note' => get_string('toolnote', 'mod_mylkpd'),
+            'table' => get_string('inserttable', 'mod_mylkpd'),
+            'tablemove' => get_string('tablemove', 'mod_mylkpd'),
+            'tableaddrow' => get_string('tableaddrow', 'mod_mylkpd'),
+            'tableaddcol' => get_string('tableaddcol', 'mod_mylkpd'),
+            'tabledelrow' => get_string('tabledelrow', 'mod_mylkpd'),
+            'tabledelcol' => get_string('tabledelcol', 'mod_mylkpd'),
+            'tableborder' => get_string('tableborder', 'mod_mylkpd'),
+            'tablecolor' => get_string('tablecolor', 'mod_mylkpd'),
+            'tabledelete' => get_string('tabledelete', 'mod_mylkpd'),
+            'tablestyle' => get_string('tablestyle', 'mod_mylkpd'),
+            'tablesolid' => get_string('tablesolid', 'mod_mylkpd'),
+            'tabledashed' => get_string('tabledashed', 'mod_mylkpd'),
+            'tabledotted' => get_string('tabledotted', 'mod_mylkpd'),
+            'tablenoborder' => get_string('tablenoborder', 'mod_mylkpd'),
+            'tablethickness' => get_string('tablethickness', 'mod_mylkpd'),
+            'tablebordercolor' => get_string('tablebordercolor', 'mod_mylkpd'),
+            'tableheader' => get_string('tableheader', 'mod_mylkpd'),
+            'tablecell' => get_string('tablecell', 'mod_mylkpd'),
+            'tablenofill' => get_string('tablenofill', 'mod_mylkpd'),
+            'tablepick' => get_string('tablepick', 'mod_mylkpd'),
             'teacher' => get_string('teacherlabel', 'mod_mylkpd'),
             'notehint' => get_string('notehint', 'mod_mylkpd'),
             'openlink' => get_string('openlink', 'mod_mylkpd'),

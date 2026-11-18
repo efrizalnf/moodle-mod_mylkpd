@@ -1,6 +1,6 @@
 # MyLKPD (mod_mylkpd) — LKPD Interaktif untuk Moodle
 
-Versi 1.3.2 (beta) · Moodle 4.1+ · dibuat oleh **Zalira**
+Versi 1.3.3 (beta) · Moodle 4.1+ · dibuat oleh **Zalira**
 
 Plugin aktivitas Moodle (4.1+). Guru cukup mengunggah LKPD (PDF atau Word), siswa mengerjakan
 langsung di atas halaman LKPD, lalu guru menilai dari Moodle. Nilai otomatis masuk Gradebook.
@@ -40,8 +40,9 @@ Tombol *Edit lagi* hanya tersedia selama LKPD belum ditutup. Guru tetap bisa men
 anotasi kapan saja.
 
 ### Potongan nilai karena terlambat
-- **Potongan nilai terlambat (poin)**: jumlah poin yang dikurangi; **diterapkan sekali** atau
-  **setiap hari keterlambatan** (hari yang sudah dimulai dihitung satu hari).
+- **Potongan nilai terlambat (poin)**: jumlah poin yang dikurangi.
+- Centang **Kurangi setiap hari keterlambatan** agar potongan berlaku untuk setiap hari (hari yang sudah
+  dimulai dihitung satu hari). Jika tidak dicentang, nilai hanya dikurangi **sekali**.
 - Guru menilai pekerjaannya seperti biasa (nilai angka atau rubrik). Nilai guru tetap tersimpan;
   yang dikirim ke **Gradebook** adalah *nilai guru − potongan* (tidak pernah di bawah 0), dengan
   catatan "Dikumpulkan terlambat … : −N poin" di umpan balik.
@@ -80,10 +81,20 @@ Opsional, bisa diaktifkan/nonaktifkan di **Administrasi situs > Plugin > Modul a
 penyedia (Claude atau OpenAI/kompatibel OpenAI), API key, model, dan URL dasar API (untuk proxy/router).
 Lalu aktifkan per aktivitas di pengaturan aktivitas ("Pemeriksaan esai dengan AI").
 
+**Pemeriksaan otomatis terjadwal:** di pengaturan aktivitas isi **Periksa otomatis dengan AI mulai**
+(tanggal & jam). Mulai waktu itu, tugas terjadwal Moodle (cron, tiap 10 menit) memeriksa setiap LKPD yang
+sudah dikumpulkan dan **menyimpan nilai** (skor AI diskalakan ke nilai maksimum, dikurangi potongan
+terlambat) beserta umpan baliknya ke Gradebook. Nilai yang sudah diberikan guru **tidak pernah ditimpa**;
+LKPD yang dikumpulkan belakangan ikut diperiksa di putaran berikutnya; pemeriksaan yang gagal dicatat
+(tidak diulang terus) dan bisa dijalankan ulang manual. Dengan rubrik, hanya saran AI yang disimpan.
+Butuh kunci jawaban dan cron Moodle yang berjalan.
+
 **Pola penyelarasan soal ↔ kunci jawaban (best practice yang dipakai):**
 1. Guru membuka **Kunci jawaban** (tombol di halaman Jawaban siswa). Untuk setiap soal esai diisi:
    nomor, soal, kunci jawaban (jawaban ideal), poin penilaian (satu per baris), dan skor maksimum.
    **Deteksi soal** mengisi otomatis dari soal bernomor (1. 2. 3. …) pada LKPD Word.
+   **Pilih soal**: klik paragraf soal di LKPD (atau seret kotak di PDF) dan teksnya langsung tersalin ke
+   kolom Soal; nomor soal ikut terisi. Area soal ditandai ungu, area jawaban oranye/biru.
 2. Setiap soal **dihubungkan ke area jawabannya** di LKPD: klik paragraf/sel tabel tempat siswa
    mengetik (mode Edit teks), dan/atau seret kotak di halaman untuk jawaban yang ditulis di atas
    halaman (mode Anotasi/PDF). Deteksi soal sudah menyarankan areanya (paragraf/sel sampai soal berikutnya).
@@ -165,10 +176,18 @@ Baris 1 (alat): **Ketik** (khusus DOCX), Pindah, Teks, Centang, Silang, Lingkari
 Penghapus | Urungkan/Ulangi.
 Baris 2: format teks paragraf (khusus DOCX): Tebal, Miring, Garis bawah, Coret, Pangkat, Indeks,
 Warna teks, Stabilo teks, Hapus format | 5 warna, 3 ketebalan | **Perataan** (rata kiri, tengah, kanan,
-kanan-kiri; untuk paragraf Word dan kotak teks) | Sisipkan: **Persamaan** (LaTeX dengan palet template dan
+kanan-kiri; untuk paragraf Word dan kotak teks) | Sisipkan (Gambar, **Tabel**, Persamaan, Simbol, Arab, Tautan): **Persamaan** (LaTeX dengan palet template dan
 pratinjau, dirender KaTeX), **Simbol** (±, ×, √, π, °, panah, huruf Yunani, dll.), **Arab** (keyboard
 huruf hijaiyah + harakat + angka Arab), **Tautan**.
 
+- **Tabel**: tombol Tabel membuka pemilih ukuran (kisi seperti Word, maks. 20 × 8). Tabel diletakkan di
+  halaman yang sedang dilihat; sel diisi langsung (**Tab** pindah sel). Saat tabel dipilih, muncul
+  mini-toolbar di atasnya: + baris, + kolom, − baris, − kolom, **Garis ▾** (penuh/putus-putus/titik/tanpa,
+  ketebalan, warna garis), **Warna ▾** (baris judul dan sel terpilih), hapus tabel. Pindahkan lewat
+  pegangan ⠿, ubah lebar lewat sudut kanan bawah. Tersinkron pada kerja kelompok dan ikut dibaca AI.
+- **Halaman kosong** (misalnya akibat page break di akhir dokumen atau halaman putih di PDF) tidak
+  ditampilkan, dan paragraf kosong di akhir yang meluber melewati tinggi halaman dipangkas. Halaman yang
+  sudah berisi jawaban selalu tampil; nomor halaman tidak berubah.
 - File DOCX: alat Ketik dan alat gambar tersedia bersamaan (gambar/coretan di atas halaman Word).
 - File PDF: alat gambar + Persamaan/Tautan diletakkan di halaman; Simbol/Arab masuk ke kotak teks.
 - Gambar Word "di belakang teks" (latar halaman, banner, bingkai) ditempatkan di posisi aslinya di
@@ -185,7 +204,8 @@ Posisi gambar disimpan dalam persen halaman, jadi tetap pas di HP maupun laptop.
 - version.php, lib.php, locallib.php, mod_form.php
 - view.php (siswa), ajax.php (autosave/sinkron), upload.php (unggah gambar), keys.php (kunci jawaban),
   aicheck.php (pemeriksaan AI), aistatus.php & aitest.php (cek koneksi AI), settings.php (pengaturan plugin),
-  classes/ai (klien & pemeriksa AI), classes/admin (widget status koneksi), classes/dates.php (tanggal aktivitas), submissions.php (daftar), grade.php (penilaian), index.php
+  classes/ai (klien & pemeriksa AI), classes/admin (widget status koneksi), classes/dates.php (tanggal aktivitas),
+  classes/task (pemeriksaan AI terjadwal) & db/tasks.php, submissions.php (daftar), grade.php (penilaian), index.php
 - db/install.xml, db/upgrade.php, db/access.php
 - classes/event, classes/form, classes/privacy
 - js/worksheet.js (editor), styles.css
@@ -203,7 +223,8 @@ rilis dengan nomor `release` yang sama, agar Moodle menjalankan upgrade.
 
 | Versi | `$plugin->version` | Perubahan utama |
 |---|---|---|
-| **1.3.2** | 2026111804 | Perataan paragraf dan kotak teks (**rata kiri, tengah, kanan, kanan-kiri**); jadwal **Dibuka / Batas waktu / Ditutup** (kalender, Timeline, tanggal di halaman kursus); **potongan nilai terlambat** otomatis (sekali atau per hari); **pengumpulan kelompok**: cukup perwakilan atau semua anggota; **status koneksi AI** dan tombol *Cek koneksi* di pengaturan; AI kompatibel **9router** (pembaca balasan tangguh, uji koneksi dengan balasan mentah); status **Benar / Sebagian / Salah** di tabel dan langsung di LKPD; kolom **Skor AI** dan **Periksa semua dengan AI**; deteksi soal lebih luas. |
+| **1.3.3** | 2026111900 | **Tabel** di editor (pemilih ukuran, isi sel, + / − baris & kolom, gaya/ketebalan/warna garis, warna baris judul & sel) dengan mini-toolbar yang muncul di atas tabel; **pemeriksaan AI terjadwal** yang menyimpan nilai otomatis (tidak menimpa nilai guru); **Pilih soal** di Kunci jawaban (teks soal tersalin otomatis, juga dari PDF); potongan terlambat per hari menjadi **checkbox** (tidak dicentang = sekali); **halaman kosong** dan ruang kosong di akhir dokumen tidak lagi ditampilkan. |
+| 1.3.2 | 2026111804 | Perataan paragraf dan kotak teks (**rata kiri, tengah, kanan, kanan-kiri**); jadwal **Dibuka / Batas waktu / Ditutup** (kalender, Timeline, tanggal di halaman kursus); **potongan nilai terlambat** otomatis (sekali atau per hari); **pengumpulan kelompok**: cukup perwakilan atau semua anggota; **status koneksi AI** dan tombol *Cek koneksi* di pengaturan; AI kompatibel **9router** (pembaca balasan tangguh, uji koneksi dengan balasan mentah); status **Benar / Sebagian / Salah** di tabel dan langsung di LKPD; kolom **Skor AI** dan **Periksa semua dengan AI**; deteksi soal lebih luas. |
 | 1.3.0 | 2026111800 | Pemeriksaan esai dengan AI (Claude / OpenAI), halaman **Kunci jawaban** dengan area jawaban dan deteksi soal; watermark "dibuat oleh Zalira"; tautan bisa diklik di mode baca. |
 | 1.2.1 | 2026111701 | Guru mengedit teks LKPD siswa langsung; tautan otomatis bisa diklik; tabel tidak terpotong; toolbar selalu di bawah bar tema. |
 | 1.2.0 | 2026111700 | Anotasi dan **catatan guru** di halaman penilaian; perbaikan DOCX berlatar gambar. |

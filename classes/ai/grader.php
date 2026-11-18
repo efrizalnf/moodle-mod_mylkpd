@@ -77,6 +77,12 @@ class grader {
                         $text = '\\(' . $item['tex'] . '\\)';
                     } else if ($item['type'] === 'link') {
                         $text = trim(($item['text'] ?? '') . ' ' . $item['url']);
+                    } else if ($item['type'] === 'table') {
+                        $lines = [];
+                        foreach ((array) ($item['cells'] ?? []) as $row) {
+                            $lines[] = implode(' | ', array_map('strval', (array) $row));
+                        }
+                        $text = trim(implode("\n", $lines), " |\n");
                     }
                     if ($text !== '') {
                         $found[] = [$r['page'], round($y, 1), $x, $text];

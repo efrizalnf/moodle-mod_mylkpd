@@ -39,6 +39,15 @@ var MyLKPDAI = (function() {
             if (!result) {
                 return;
             }
+            if (result.error) {
+                // A failed automatic check: show why; the teacher can run the check again by hand.
+                last = null;
+                out.appendChild(el('div', 'alert alert-warning', S.autoerror.replace('{error}', result.error)));
+                return;
+            }
+            if (result.auto) {
+                out.appendChild(el('div', 'mylkpd-ai-autonote', '\u23F1 ' + S.autodone));
+            }
             var table = el('table', 'generaltable mylkpd-ai-table');
             var head = el('tr');
             [S.colnumber, S.colanswer, S.colscore, S.colstatus, S.colfeedback].forEach(function(h) {

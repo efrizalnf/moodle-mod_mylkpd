@@ -68,6 +68,9 @@ class mod_mylkpd_mod_form extends moodleform_mod {
         if (\mod_mylkpd\ai\client::site_enabled()) {
             $mform->addElement('advcheckbox', 'aienabled', get_string('aienabled', 'mod_mylkpd'));
             $mform->addHelpButton('aienabled', 'aienabled', 'mod_mylkpd');
+            $mform->addElement('date_time_selector', 'aiautotime', get_string('aiautotime', 'mod_mylkpd'), ['optional' => true]);
+            $mform->addHelpButton('aiautotime', 'aiautotime', 'mod_mylkpd');
+            $mform->hideIf('aiautotime', 'aienabled', 'notchecked');
         } else {
             $mform->addElement('static', 'aidisabledinfo', get_string('aienabled', 'mod_mylkpd'),
                 get_string('aisiteoff', 'mod_mylkpd'));
@@ -92,10 +95,10 @@ class mod_mylkpd_mod_form extends moodleform_mod {
         $mform->setDefault('latepenalty', 0);
         $mform->addHelpButton('latepenalty', 'latepenalty', 'mod_mylkpd');
         $mform->hideIf('latepenalty', 'duedate[enabled]', 'notchecked');
-        $mform->addElement('select', 'latepenaltymode', get_string('latepenaltymode', 'mod_mylkpd'), [
-            0 => get_string('latepenaltyonce', 'mod_mylkpd'),
-            1 => get_string('latepenaltyperday', 'mod_mylkpd'),
-        ]);
+        // Ticked: the penalty is taken for every started day late. Not ticked: only once.
+        $mform->addElement('advcheckbox', 'latepenaltymode', get_string('latepenaltymode', 'mod_mylkpd'),
+            get_string('latepenaltyperdaylabel', 'mod_mylkpd'), null, [0, 1]);
+        $mform->addHelpButton('latepenaltymode', 'latepenaltymode', 'mod_mylkpd');
         $mform->hideIf('latepenaltymode', 'duedate[enabled]', 'notchecked');
 
         $this->standard_grading_coursemodule_elements();

@@ -195,10 +195,14 @@ if (mylkpd_ai_enabled($mylkpd)) {
         if ($stored) {
             $stored['timetext'] = userdate($stored['time'] ?? 0);
         }
+        if (!empty($mylkpd->aiautotime)) {
+            echo html_writer::div('&#9201; ' . get_string(time() >= $mylkpd->aiautotime ? 'aiautoactive' : 'aiautoplanned',
+                'mod_mylkpd', userdate($mylkpd->aiautotime)), 'small text-muted mb-2');
+        }
         $aistrings = [];
         foreach (['colnumber', 'colanswer', 'colscore', 'colstatus', 'colfeedback', 'total', 'checkedat', 'apply', 'review',
                 'checking', 'failed', 'missing', 'empty', 'number', 'replacefeedback', 'vright', 'vpartial', 'vwrong', 'vunknown',
-                'unchanged', 'outside'] as $k) {
+                'unchanged', 'outside', 'autodone', 'autoerror'] as $k) {
             $aistrings[$k] = get_string('ai' . $k, 'mod_mylkpd');
         }
         $PAGE->requires->js(new moodle_url('/mod/mylkpd/js/aicheck.js'));

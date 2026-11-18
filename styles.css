@@ -1498,3 +1498,320 @@
     background: #0f6cbf;
     border-color: #0f6cbf;
 }
+
+/* Blank pages (nothing on them, no answers) are not shown. */
+.path-mod-mylkpd .mylkpd-page-hidden {
+    display: none !important;
+}
+
+/* Answer key: question areas (purple) next to answer areas */
+.path-mod-mylkpd .mylkpd-anchor-block.mylkpd-anchor-q {
+    background: rgba(111, 66, 193, .12);
+    box-shadow: inset 3px 0 0 #6f42c1;
+}
+
+.path-mod-mylkpd .mylkpd-anchor-rect.mylkpd-anchor-q {
+    background: rgba(111, 66, 193, .1);
+    border-color: #6f42c1;
+}
+
+.path-mod-mylkpd .mylkpd-anchor-q::after {
+    background: #6f42c1;
+}
+
+.path-mod-mylkpd .mylkpd-anchor-q.mylkpd-anchor-active {
+    box-shadow: inset 3px 0 0 #6f42c1, 0 0 0 2px #6f42c1;
+}
+
+.path-mod-mylkpd .btn-mylkpd-q-active {
+    color: #fff;
+    background: #6f42c1;
+    border-color: #6f42c1;
+}
+
+.path-mod-mylkpd .mylkpd-keyrow-qarea {
+    margin: -.1rem 0 .45rem;
+}
+
+.path-mod-mylkpd .mylkpd-flash {
+    animation: mylkpd-flash .7s ease-out;
+}
+
+@keyframes mylkpd-flash {
+    from {
+        background: #e9d8fd;
+    }
+
+    to {
+        background: inherit;
+    }
+}
+
+/* Tables put on the page */
+.path-mod-mylkpd .mylkpd-tableitem {
+    position: absolute;
+    z-index: 2;
+}
+
+.path-mod-mylkpd .mylkpd-table {
+    width: 100%;
+    table-layout: fixed;
+    border-collapse: collapse;
+    background: rgba(255, 255, 255, .92);
+}
+
+.path-mod-mylkpd .mylkpd-table td {
+    padding: .15em .35em;
+    font-size: max(11px, 1.45cqw);
+    line-height: 1.35;
+    vertical-align: top;
+}
+
+.path-mod-mylkpd .mylkpd-table td.mylkpd-table-head {
+    font-weight: 600;
+}
+
+.path-mod-mylkpd .mylkpd-cell {
+    min-height: 1.35em;
+    outline: none;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.path-mod-mylkpd .mylkpd-table td:focus-within {
+    box-shadow: inset 0 0 0 2px #0f6cbf;
+}
+
+/* "No border": faint guides while editing so the cells can still be found. */
+.path-mod-mylkpd .mylkpd-table-noborder td {
+    border: 1px dashed transparent;
+}
+
+.path-mod-mylkpd .mylkpd-container:not(.mylkpd-mode-view) .mylkpd-table-noborder td {
+    border-color: #d0d4d9;
+}
+
+.path-mod-mylkpd .mylkpd-mode-move .mylkpd-cell,
+.path-mod-mylkpd .mylkpd-mode-erase .mylkpd-cell {
+    pointer-events: none;
+}
+
+.path-mod-mylkpd .mylkpd-mode-move .mylkpd-tableitem {
+    cursor: move;
+}
+
+.path-mod-mylkpd .mylkpd-table-grip {
+    position: absolute;
+    top: 0;
+    left: -1.5em;
+    display: none;
+    width: 1.3em;
+    padding: .1em 0;
+    font-size: 14px;
+    line-height: 1.2;
+    color: #fff;
+    text-align: center;
+    background: #0f6cbf;
+    border-radius: 3px;
+    cursor: move;
+    user-select: none;
+}
+
+.path-mod-mylkpd .mylkpd-tableitem:hover .mylkpd-table-grip,
+.path-mod-mylkpd .mylkpd-tableitem.mylkpd-selected .mylkpd-table-grip,
+.path-mod-mylkpd .mylkpd-tableitem:hover .mylkpd-resize,
+.path-mod-mylkpd .mylkpd-tableitem.mylkpd-selected .mylkpd-resize {
+    display: block;
+}
+
+.path-mod-mylkpd .mylkpd-tableitem.mylkpd-selected {
+    outline: 2px dashed #0f6cbf;
+    outline-offset: 2px;
+}
+
+/* Mini toolbar above a selected table */
+.mylkpd-tabletools {
+    position: fixed;
+    z-index: 1065;
+    display: none;
+    align-items: center;
+    gap: 2px;
+    padding: 3px;
+    background: #fff;
+    border: 1px solid #ced4da;
+    border-radius: .5rem;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, .16);
+}
+
+.mylkpd-tt-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+    height: 30px;
+    padding: 0 .45rem;
+    font-size: .8rem;
+    color: #343a40;
+    white-space: nowrap;
+    background: transparent;
+    border: 0;
+    border-radius: .35rem;
+    cursor: pointer;
+}
+
+.mylkpd-tt-btn:hover {
+    background: #eef3f8;
+}
+
+.mylkpd-tt-danger:hover {
+    color: #b02a37;
+    background: #fbe9eb;
+}
+
+.mylkpd-tt-sep {
+    width: 1px;
+    height: 20px;
+    margin: 0 3px;
+    background: #dee2e6;
+}
+
+.mylkpd-tt-caret {
+    font-size: .7rem;
+    color: #6c757d;
+}
+
+.mylkpd-tt-paint {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    background: linear-gradient(135deg, #fff3cd 0 33%, #cfe2ff 33% 66%, #d1e7dd 66%);
+    border: 1px solid #adb5bd;
+    border-radius: 3px;
+}
+
+.mylkpd-tablepop {
+    position: absolute;
+    top: calc(100% + 6px);
+    display: none;
+    min-width: 210px;
+    padding: .5rem .6rem;
+    background: #fff;
+    border: 1px solid #ced4da;
+    border-radius: .45rem;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, .16);
+}
+
+.mylkpd-tablepop-label {
+    margin: .35rem 0 .2rem;
+    font-size: .72rem;
+    font-weight: 700;
+    color: #6c757d;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+}
+
+.mylkpd-tablepop-label:first-child {
+    margin-top: 0;
+}
+
+.mylkpd-tablepop-options,
+.mylkpd-tablepop-swatches {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.mylkpd-borderopt {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 42px;
+    height: 26px;
+    padding: 0 6px;
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: .3rem;
+    cursor: pointer;
+}
+
+.mylkpd-borderopt span {
+    display: block;
+    width: 100%;
+}
+
+.mylkpd-borderopt.active {
+    background: #e7f1fb;
+    border-color: #0f6cbf;
+}
+
+.mylkpd-swatch-sm {
+    width: 1.35rem;
+    height: 1.35rem;
+    padding: 0;
+    border: 2px solid #fff;
+    border-radius: 50%;
+    box-shadow: 0 0 0 1px #adb5bd;
+    cursor: pointer;
+}
+
+.mylkpd-swatch-sm.active {
+    box-shadow: 0 0 0 2px #212529;
+}
+
+.mylkpd-swatch-none {
+    background: linear-gradient(135deg, #fff 45%, #dc3545 45% 55%, #fff 55%) !important;
+}
+
+.mylkpd-tablepop-swatches.mylkpd-disabled {
+    opacity: .35;
+    pointer-events: none;
+}
+
+/* Size picker for a new table */
+.mylkpd-tablepicker {
+    position: fixed;
+    z-index: 1066;
+    display: none;
+    padding: .5rem;
+    background: #fff;
+    border: 1px solid #ced4da;
+    border-radius: .5rem;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, .16);
+}
+
+.mylkpd-tablepicker-grid {
+    display: grid;
+    grid-template-columns: repeat(8, 18px);
+    gap: 3px;
+}
+
+.mylkpd-tablepicker-grid button {
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    background: #fff;
+    border: 1px solid #ced4da;
+    border-radius: 2px;
+    cursor: pointer;
+}
+
+.mylkpd-tablepicker-grid button.on {
+    background: #cfe2ff;
+    border-color: #0f6cbf;
+}
+
+.mylkpd-tablepicker-label {
+    margin-top: .35rem;
+    font-size: .8rem;
+    color: #495057;
+    text-align: center;
+}
+
+.path-mod-mylkpd .mylkpd-ai-autonote {
+    display: inline-block;
+    margin-bottom: .4rem;
+    padding: .15rem .55rem;
+    font-size: .8rem;
+    color: #084298;
+    background: #cfe2ff;
+    border-radius: 1rem;
+}

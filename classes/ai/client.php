@@ -24,7 +24,6 @@ namespace mod_mylkpd\ai;
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class client {
-
     /** Model used for Claude when the setting is empty. */
     const DEFAULT_ANTHROPIC_MODEL = 'claude-sonnet-5-5';
 
@@ -40,6 +39,7 @@ class client {
     /**
      * Provider and model actually used, for display.
      *
+     * @param array|null $override values from the settings form (null = saved settings)
      * @return string
      */
     public static function describe(?array $override = null): string {
@@ -48,6 +48,9 @@ class client {
     }
 
     /**
+     * Provider and model to use: the saved settings, or the values being tested.
+     *
+     * @param array|null $override values from the settings form (null = saved settings)
      * @return array [provider, model]
      */
     protected static function provider_model(?array $override = null): array {
@@ -64,6 +67,7 @@ class client {
      *
      * @param string $system instructions
      * @param string $prompt the task (with the data)
+     * @param array|null $override values from the settings form for a connection test (null = saved settings)
      * @return string
      * @throws \moodle_exception
      */
@@ -154,8 +158,11 @@ class client {
         $start = microtime(true);
         $result = ['ok' => false, 'seconds' => 0, 'model' => self::describe($override), 'message' => '', 'reply' => ''];
         try {
-            $reply = self::complete('You check essay answers. Reply with JSON only.',
-                'Connection test. Reply exactly with {"results":[{"id":"q1","score":1,"feedback":"OK"}]}', $override);
+            $reply = self::complete(
+                'You check essay answers. Reply with JSON only.',
+                'Connection test. Reply exactly with {"results":[{"id":"q1","score":1,"feedback":"OK"}]}',
+                $override
+            );
             $parsed = grader::find_json($reply);
             $result['reply'] = \core_text::substr($reply, 0, 1500);
             $result['ok'] = $parsed !== null && isset($parsed['results'][0]['score']);
@@ -179,7 +186,7 @@ class client {
     protected static function openai_text(array $data): string {
         $content = $data['choices'][0]['message']['content'] ?? ($data['choices'][0]['text'] ?? '');
         if (is_array($content)) {
-            $content = implode('', array_map(function($part) {
+            $content = implode('', array_map(function ($part) {
                 return is_array($part) ? (string) ($part['text'] ?? '') : (string) $part;
             }, $content));
         }

@@ -28,7 +28,6 @@ require_once($CFG->libdir . '/formslib.php');
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class grade_form extends \moodleform {
-
     /**
      * Form definition.
      */
@@ -48,8 +47,12 @@ class grade_form extends \moodleform {
         $gradinginstance = $this->_customdata['gradinginstance'] ?? null;
         if ($gradinginstance) {
             // Rubric or marking guide from Moodle's advanced grading.
-            $mform->addElement('grading', 'advancedgrading', get_string('rubricgrade', 'mod_mylkpd'),
-                ['gradinginstance' => $gradinginstance]);
+            $mform->addElement(
+                'grading',
+                'advancedgrading',
+                get_string('rubricgrade', 'mod_mylkpd'),
+                ['gradinginstance' => $gradinginstance]
+            );
             $mform->addElement('hidden', 'advancedgradinginstanceid', $gradinginstance->get_id());
             $mform->setType('advancedgradinginstanceid', PARAM_INT);
         } else if ($mylkpd->grade > 0) {
@@ -79,7 +82,8 @@ class grade_form extends \moodleform {
     public function validation($data, $files) {
         $errors = parent::validation($data, $files);
         $mylkpd = $this->_customdata['mylkpd'];
-        if (empty($this->_customdata['gradinginstance']) && $mylkpd->grade > 0 && isset($data['grade']) && $data['grade'] !== '' && $data['grade'] !== null) {
+        $hasgrade = isset($data['grade']) && $data['grade'] !== '' && $data['grade'] !== null;
+        if (empty($this->_customdata['gradinginstance']) && $mylkpd->grade > 0 && $hasgrade) {
             if ($data['grade'] < 0 || $data['grade'] > $mylkpd->grade) {
                 $errors['grade'] = get_string('gradeoutofrange', 'mod_mylkpd', $mylkpd->grade);
             }

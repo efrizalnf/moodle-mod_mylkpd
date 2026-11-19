@@ -31,7 +31,6 @@ require_once($CFG->dirroot . '/mod/mylkpd/lib.php');
  * Settings form for mod_mylkpd.
  */
 class mod_mylkpd_mod_form extends moodleform_mod {
-
     /**
      * Form definition.
      */
@@ -46,8 +45,13 @@ class mod_mylkpd_mod_form extends moodleform_mod {
 
         $this->standard_intro_elements();
 
-        $mform->addElement('filemanager', 'worksheet', get_string('worksheetfile', 'mod_mylkpd'), null,
-            mylkpd_filemanager_options());
+        $mform->addElement(
+            'filemanager',
+            'worksheet',
+            get_string('worksheetfile', 'mod_mylkpd'),
+            null,
+            mylkpd_filemanager_options()
+        );
         $mform->addRule('worksheet', null, 'required');
         $mform->addHelpButton('worksheet', 'worksheetfile', 'mod_mylkpd');
 
@@ -85,8 +89,12 @@ class mod_mylkpd_mod_form extends moodleform_mod {
             $mform->addHelpButton('aiautotime', 'aiautotime', 'mod_mylkpd');
             $mform->hideIf('aiautotime', 'aienabled', 'notchecked');
         } else {
-            $mform->addElement('static', 'aidisabledinfo', get_string('aienabled', 'mod_mylkpd'),
-                get_string('aisiteoff', 'mod_mylkpd'));
+            $mform->addElement(
+                'static',
+                'aidisabledinfo',
+                get_string('aienabled', 'mod_mylkpd'),
+                get_string('aisiteoff', 'mod_mylkpd')
+            );
         }
 
         // Changing these after students started would make existing answers unusable.
@@ -109,8 +117,14 @@ class mod_mylkpd_mod_form extends moodleform_mod {
         $mform->addHelpButton('latepenalty', 'latepenalty', 'mod_mylkpd');
         $mform->hideIf('latepenalty', 'duedate[enabled]', 'notchecked');
         // Ticked: the penalty is taken for every started day late. Not ticked: only once.
-        $mform->addElement('advcheckbox', 'latepenaltymode', get_string('latepenaltymode', 'mod_mylkpd'),
-            get_string('latepenaltyperdaylabel', 'mod_mylkpd'), null, [0, 1]);
+        $mform->addElement(
+            'advcheckbox',
+            'latepenaltymode',
+            get_string('latepenaltymode', 'mod_mylkpd'),
+            get_string('latepenaltyperdaylabel', 'mod_mylkpd'),
+            null,
+            [0, 1]
+        );
         $mform->addHelpButton('latepenaltymode', 'latepenaltymode', 'mod_mylkpd');
         $mform->hideIf('latepenaltymode', 'duedate[enabled]', 'notchecked');
 
@@ -153,8 +167,10 @@ class mod_mylkpd_mod_form extends moodleform_mod {
         $penalty = (float) ($data['latepenalty'] ?? 0);
         if ($penalty < 0) {
             $errors['latepenalty'] = get_string('latepenaltynegative', 'mod_mylkpd');
-        } else if ($penalty > 0 && isset($data['grade']) && is_numeric($data['grade']) && $data['grade'] > 0 &&
-                $penalty > $data['grade']) {
+        } else if (
+            $penalty > 0 && isset($data['grade']) && is_numeric($data['grade']) && $data['grade'] > 0 &&
+                $penalty > $data['grade']
+        ) {
             $errors['latepenalty'] = get_string('latepenaltytoolarge', 'mod_mylkpd', $data['grade']);
         }
         if (($data['workmode'] ?? '') === 'edit' && !empty($data['worksheet'])) {

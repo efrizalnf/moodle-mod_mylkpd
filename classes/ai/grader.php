@@ -35,7 +35,6 @@ namespace mod_mylkpd\ai;
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class grader {
-
     /** Longest answer text sent per question (characters). */
     const MAX_ANSWER = 4000;
 
@@ -102,7 +101,7 @@ class grader {
                     }
                 }
             }
-            usort($found, function($a, $b) {
+            usort($found, function ($a, $b) {
                 return [$a[0], $a[1], $a[2]] <=> [$b[0], $b[1], $b[2]];
             });
             foreach ($found as $f) {
@@ -160,8 +159,10 @@ class grader {
             }
             $inside = false;
             foreach ($regions as $r) {
-                if ((int) $item['page'] === (int) $r['page'] && $item['x'] >= $r['x'] && $item['x'] <= $r['x'] + $r['w'] &&
-                        $item['y'] >= $r['y'] && $item['y'] <= $r['y'] + $r['h']) {
+                if (
+                    (int) $item['page'] === (int) $r['page'] && $item['x'] >= $r['x'] && $item['x'] <= $r['x'] + $r['w'] &&
+                        $item['y'] >= $r['y'] && $item['y'] <= $r['y'] + $r['h']
+                ) {
                     $inside = true;
                     break;
                 }
@@ -196,7 +197,8 @@ class grader {
     public static function find_json(string $reply): ?array {
         $reply = preg_replace('~<think(?:ing)?>.*?</think(?:ing)?>~is', '', $reply);
         $candidates = [];
-        if (preg_match_all('~```(?:json)?\s*(.*?)```~is', $reply, $m)) {
+        // Code fences (three backticks, written as \x60 for the pattern).
+        if (preg_match_all('~\x60{3}(?:json)?\s*(.*?)\x60{3}~is', $reply, $m)) {
             $candidates = array_merge($candidates, $m[1]);
         }
         // Every balanced {...} in the reply, outermost first.
@@ -325,16 +327,18 @@ class grader {
         $index = 0;
         foreach ($questions as $q) {
             // Match by id; models sometimes answer with the question number or just in order.
-            $r = $byid['q' . $q->id] ?? $bylabel[(string) $q->label] ?? (count($byorder) === count($questions) ? $byorder[$index] : null);
+            $inorder = count($byorder) === count($questions) ? $byorder[$index] : null;
+            $r = $byid['q' . $q->id] ?? $bylabel[(string) $q->label] ?? $inorder;
             $index++;
             $qmax = (float) $q->maxscore;
             $raw = $r['score'] ?? ($r['skor'] ?? ($r['nilai'] ?? null));
             if (is_string($raw) && preg_match('/-?\d+(?:[.,]\d+)?/', $raw, $num)) {
-                $raw = str_replace(',', '.', $num[0]); // "8/10" or "8,5".
+                // Scores written like 8/10 or 8,5.
+                $raw = str_replace(',', '.', $num[0]);
             }
             $score = ($r && is_numeric($raw)) ? max(0, min($qmax, round((float) $raw, 2))) : null;
-            $clean = function($list) {
-                return array_slice(array_values(array_filter(array_map(function($v) {
+            $clean = function ($list) {
+                return array_slice(array_values(array_filter(array_map(function ($v) {
                     return is_scalar($v) ? \core_text::substr(clean_param((string) $v, PARAM_TEXT), 0, 200) : '';
                 }, is_array($list) ? $list : []))), 0, 10);
             };

@@ -48,13 +48,8 @@ $nogroup = $cansubmit && $team && !$groupid;
 $canwork = mylkpd_can_work($mylkpd);
 $allmembers = mylkpd_requires_all_members($mylkpd);
 
-/**
- * Message for a student who cannot work right now (not open yet / closed).
- *
- * @param stdClass $mylkpd
- * @return string
- */
-$notworkingmessage = function(stdClass $mylkpd): string {
+// Message for a student who cannot work right now (not open yet / closed).
+$notworkingmessage = function (stdClass $mylkpd): string {
     return mylkpd_is_open($mylkpd) ? get_string('closedmessage', 'mod_mylkpd', userdate($mylkpd->cutoffdate))
         : get_string('notopenmessage', 'mod_mylkpd', userdate($mylkpd->timeopen));
 };
@@ -66,8 +61,12 @@ if ($cansubmit && !$nogroup && data_submitted() && confirm_sesskey() && optional
     }
     $submission = mylkpd_find_submission($mylkpd, $cm, $USER->id, true);
     if ($submission->status == MYLKPD_STATUS_SUBMITTED) {
-        redirect($PAGE->url, get_string('alreadysubmitted', 'mod_mylkpd'), null,
-            \core\output\notification::NOTIFY_WARNING);
+        redirect(
+            $PAGE->url,
+            get_string('alreadysubmitted', 'mod_mylkpd'),
+            null,
+            \core\output\notification::NOTIFY_WARNING
+        );
     }
     $now = time();
     if ($allmembers) {
@@ -79,8 +78,12 @@ if ($cansubmit && !$nogroup && data_submitted() && confirm_sesskey() && optional
         if ($pending) {
             $DB->update_record('mylkpd_submissions', $submission);
             $names = implode(', ', array_column(mylkpd_members($pending), 'name'));
-            redirect($PAGE->url, get_string('teamconfirmed', 'mod_mylkpd', $names), null,
-                \core\output\notification::NOTIFY_SUCCESS);
+            redirect(
+                $PAGE->url,
+                get_string('teamconfirmed', 'mod_mylkpd', $names),
+                null,
+                \core\output\notification::NOTIFY_SUCCESS
+            );
         }
     }
     $submission->status = MYLKPD_STATUS_SUBMITTED;
@@ -90,8 +93,12 @@ if ($cansubmit && !$nogroup && data_submitted() && confirm_sesskey() && optional
     $DB->update_record('mylkpd_submissions', $submission);
     mylkpd_cleanup_images($context, $submission);
     $late = mylkpd_late_seconds($mylkpd, $submission);
-    redirect($PAGE->url, $late ? get_string('submittedlate', 'mod_mylkpd', format_time($late)) : get_string('submitted', 'mod_mylkpd'),
-        null, $late ? \core\output\notification::NOTIFY_WARNING : \core\output\notification::NOTIFY_SUCCESS);
+    redirect(
+        $PAGE->url,
+        $late ? get_string('submittedlate', 'mod_mylkpd', format_time($late)) : get_string('submitted', 'mod_mylkpd'),
+        null,
+        $late ? \core\output\notification::NOTIFY_WARNING : \core\output\notification::NOTIFY_SUCCESS
+    );
 }
 
 // Every member must submit: a member takes back their own submission (the group's work is not submitted yet).
@@ -110,8 +117,12 @@ if ($cansubmit && $allmembers && !$nogroup && data_submitted() && confirm_sesske
 if ($cansubmit && !$nogroup && data_submitted() && confirm_sesskey() && optional_param('reopen', 0, PARAM_BOOL)) {
     $submission = mylkpd_find_submission($mylkpd, $cm, $USER->id);
     if (!$canwork || !mylkpd_can_reopen($mylkpd, $submission)) {
-        redirect($PAGE->url, $canwork ? get_string('cannotreopen', 'mod_mylkpd') : $notworkingmessage($mylkpd), null,
-            \core\output\notification::NOTIFY_WARNING);
+        redirect(
+            $PAGE->url,
+            $canwork ? get_string('cannotreopen', 'mod_mylkpd') : $notworkingmessage($mylkpd),
+            null,
+            \core\output\notification::NOTIFY_WARNING
+        );
     }
     $submission->status = MYLKPD_STATUS_DRAFT;
     $submission->submittedby = null; // Everyone submits again.
@@ -141,9 +152,13 @@ echo $OUTPUT->header();
 if ($cangrade) {
     $count = $DB->count_records('mylkpd_submissions', ['mylkpdid' => $mylkpd->id, 'status' => MYLKPD_STATUS_SUBMITTED]);
     echo html_writer::div(
-        html_writer::link(new moodle_url('/mod/mylkpd/submissions.php', ['id' => $cm->id]),
-            get_string('viewsubmissions', 'mod_mylkpd', $count), ['class' => 'btn btn-secondary']),
-        'mb-3');
+        html_writer::link(
+            new moodle_url('/mod/mylkpd/submissions.php', ['id' => $cm->id]),
+            get_string('viewsubmissions', 'mod_mylkpd', $count),
+            ['class' => 'btn btn-secondary']
+        ),
+        'mb-3'
+    );
 }
 
 if ($nogroup) {
@@ -210,7 +225,8 @@ if ($cansubmit && !$nogroup) {
             // Every member must submit: who has, who has not yet.
             $done = mylkpd_team_confirmations($submission);
             $people = [];
-            foreach (mylkpd_members(array_keys(get_enrolled_users($context, 'mod/mylkpd:submit', $groupid, 'u.id'))) as $uid => $m) {
+            $memberlist = array_keys(get_enrolled_users($context, 'mod/mylkpd:submit', $groupid, 'u.id'));
+            foreach (mylkpd_members($memberlist) as $uid => $m) {
                 $people[] = ['name' => $m['name'], 'done' => isset($done[$uid])];
             }
             $teamprogress = ['label' => get_string('teamsubmitprogress', 'mod_mylkpd'), 'members' => $people];

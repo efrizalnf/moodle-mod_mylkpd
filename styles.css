@@ -3,7 +3,7 @@
 /* Editing panel: one sticky card, tool groups separated by thin dividers. */
 .path-mod-mylkpd .mylkpd-toolbar {
     position: sticky;
-    top: var(--mylkpd-sticky-top, 0px);
+    top: var(--mylkpd-sticky-top, 0);
     z-index: 20;
     display: flex;
     flex-direction: column;
@@ -96,7 +96,8 @@
     position: absolute;
     right: 0;
     z-index: 25;
-    width: min(420px, 80vw);
+    width: 420px;
+    max-width: 80vw;
     padding: .5rem .75rem;
     background: #fff;
     border: 1px solid #dee2e6;
@@ -112,7 +113,6 @@
 }
 
 .path-mod-mylkpd .mylkpd-hint.text-danger {
-    color: #842029 !important;
     background: #f8d7da;
 }
 
@@ -184,6 +184,7 @@
 
 .path-mod-mylkpd .mylkpd-host {
     position: relative;
+    /* stylelint-disable-next-line csstree/validator -- needed for the container query units below. */
     container-type: inline-size;
 }
 
@@ -232,7 +233,7 @@
 
 .path-mod-mylkpd .mylkpd-hit {
     opacity: 0;
-    stroke-width: 16px !important;
+    stroke-width: 16px;
     pointer-events: none;
 }
 
@@ -242,7 +243,7 @@
 }
 
 .path-mod-mylkpd .mylkpd-hit-fill {
-    stroke-width: 0 !important;
+    stroke-width: 0;
 }
 
 .path-mod-mylkpd .mylkpd-mode-move .mylkpd-hit-fill,
@@ -294,9 +295,10 @@
     pointer-events: none;
 }
 
-.path-mod-mylkpd .mylkpd-mode-view .mylkpd-text textarea {
+.path-mod-mylkpd .mylkpd-container.mylkpd-mode-view .mylkpd-text textarea,
+.path-mod-mylkpd .mylkpd-container.mylkpd-mode-view .mylkpd-text textarea:focus {
     background: rgba(255, 249, 196, .45);
-    border-color: transparent !important;
+    border-color: transparent;
 }
 
 /* Tick and cross */
@@ -486,14 +488,12 @@
 }
 
 
-
-
-
 /* Author names (group work) */
 .path-mod-mylkpd .mylkpd-namelabel {
     position: absolute;
     z-index: 2;
     padding: 0 .4em;
+    /* stylelint-disable-next-line csstree/validator -- container query units scale text with the page. */
     font: 600 max(9px, 1.05cqw)/1.35 sans-serif;
     color: #fff;
     white-space: nowrap;
@@ -664,7 +664,8 @@
 }
 
 .mylkpd-modal {
-    width: min(640px, 100%);
+    width: 640px;
+    max-width: 100%;
     max-height: 90vh;
     overflow: auto;
     padding: 1rem 1.25rem;
@@ -780,9 +781,10 @@
     font-size: 1.35rem;
 }
 
-.mylkpd-key-wide {
+.mylkpd-key-wide,
+.mylkpd-panel-arabic .mylkpd-key.mylkpd-key-wide {
     flex: 1;
-    font-size: .85rem !important;
+    font-size: .85rem;
 }
 
 .mylkpd-panel-head .mylkpd-key {
@@ -863,8 +865,8 @@
     display: block;
 }
 
-.path-mod-mylkpd .mylkpd-mode-erase .mylkpd-resize {
-    display: none !important;
+.path-mod-mylkpd .mylkpd-container.mylkpd-mode-erase .mylkpd-item .mylkpd-resize {
+    display: none;
 }
 
 @media (pointer: coarse) {
@@ -909,6 +911,7 @@
     width: 2.1em;
     height: 2.1em;
     padding: 0;
+    /* stylelint-disable-next-line csstree/validator -- container query units scale text with the page. */
     font-size: max(14px, 1.6cqw);
     line-height: 2.1em;
     text-align: center;
@@ -924,8 +927,11 @@
     top: calc(100% + 6px);
     left: 0;
     display: none;
-    width: min(320px, 60cqw);
+    width: 320px;
+    /* stylelint-disable-next-line csstree/validator -- container query units scale text with the page. */
+    max-width: 60cqw;
     padding: .5rem .6rem;
+    /* stylelint-disable-next-line csstree/validator -- container query units scale text with the page. */
     font-size: max(13px, 1.4cqw);
     line-height: 1.4;
     color: #3e2723;
@@ -1008,7 +1014,8 @@
     position: fixed;
     z-index: 1070;
     display: none;
-    max-width: min(480px, calc(100vw - 16px));
+    width: 480px;
+    max-width: calc(100vw - 16px);
     padding: .3rem .55rem;
     font-size: .85rem;
     background: #fff;
@@ -1041,6 +1048,7 @@
     max-width: 90cqw;
     overflow: hidden;
     padding: 0 .3em;
+    /* stylelint-disable-next-line csstree/validator -- container query units scale text with the page. */
     font-size: max(11px, 1.2cqw);
     color: #0f6cbf;
     white-space: nowrap;
@@ -1500,8 +1508,8 @@
 }
 
 /* Blank pages (nothing on them, no answers) are not shown. */
-.path-mod-mylkpd .mylkpd-page-hidden {
-    display: none !important;
+.path-mod-mylkpd .mylkpd-container .mylkpd-page-hidden {
+    display: none;
 }
 
 /* Answer key: question areas (purple) next to answer areas */
@@ -1562,6 +1570,7 @@
 
 .path-mod-mylkpd .mylkpd-table td {
     padding: .15em .35em;
+    /* stylelint-disable-next-line csstree/validator -- container query units scale text with the page. */
     font-size: max(11px, 1.45cqw);
     line-height: 1.35;
     vertical-align: top;
@@ -1757,8 +1766,8 @@
     box-shadow: 0 0 0 2px #212529;
 }
 
-.mylkpd-swatch-none {
-    background: linear-gradient(135deg, #fff 45%, #dc3545 45% 55%, #fff 55%) !important;
+.mylkpd-tablepop .mylkpd-swatch-none {
+    background: linear-gradient(135deg, #fff 45%, #dc3545 45% 55%, #fff 55%);
 }
 
 .mylkpd-tablepop-swatches.mylkpd-disabled {

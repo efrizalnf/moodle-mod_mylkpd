@@ -1090,6 +1090,7 @@ function start(cfg) {
             el.removeChild(el.firstChild);
         }
         var hit = makeShape(item);
+        hit.style.strokeWidth = ''; // The hit area's width comes from the stylesheet.
         hit.setAttribute('class', 'mylkpd-hit ' + (item.type === 'highlight' ? 'mylkpd-hit-fill' : 'mylkpd-hit-stroke'));
         el.appendChild(hit);
         el.appendChild(makeShape(item));
@@ -3004,7 +3005,9 @@ function start(cfg) {
             b.type = 'button';
             b.className = 'mylkpd-swatch mylkpd-swatch-sm' + (color === current ? ' active' : '') +
                 (color ? '' : ' mylkpd-swatch-none');
-            b.style.backgroundColor = color || '#fff';
+            if (color) {
+                b.style.backgroundColor = color;
+            }
             b.title = color || cfg.strings.tablenofill;
             b.setAttribute('aria-label', b.title);
             b.addEventListener('click', function() {

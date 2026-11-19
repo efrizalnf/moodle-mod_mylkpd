@@ -29,7 +29,6 @@ use core_external\external_value;
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class test_ai_connection extends external_api {
-
     /**
      * Parameters.
      *
@@ -55,10 +54,20 @@ class test_ai_connection extends external_api {
      * @param string $endpoint
      * @return array
      */
-    public static function execute(bool $saved = false, string $provider = 'anthropic', string $apikey = '', string $model = '',
-            string $endpoint = ''): array {
-        $params = self::validate_parameters(self::execute_parameters(), compact('saved', 'provider', 'apikey', 'model',
-            'endpoint'));
+    public static function execute(
+        bool $saved = false,
+        string $provider = 'anthropic',
+        string $apikey = '',
+        string $model = '',
+        string $endpoint = ''
+    ): array {
+        $params = self::validate_parameters(self::execute_parameters(), compact(
+            'saved',
+            'provider',
+            'apikey',
+            'model',
+            'endpoint'
+        ));
         $context = \context_system::instance();
         self::validate_context($context);
         require_capability('moodle/site:config', $context);

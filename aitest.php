@@ -47,21 +47,29 @@ if (optional_param('run', 0, PARAM_BOOL) && confirm_sesskey()) {
     try {
         $reply = \mod_mylkpd\ai\client::complete(
             'You check essay answers. Reply with JSON only.',
-            'Connection test. Reply exactly with {"results":[{"id":"q1","score":1,"feedback":"OK"}]}');
+            'Connection test. Reply exactly with {"results":[{"id":"q1","score":1,"feedback":"OK"}]}'
+        );
         $seconds = round(microtime(true) - $start, 1);
         $parsed = \mod_mylkpd\ai\grader::find_json($reply);
         $ok = $parsed && isset($parsed['results'][0]['score']);
-        echo $OUTPUT->notification(get_string($ok ? 'aitestok' : 'aitestunreadable', 'mod_mylkpd', $seconds),
-            $ok ? \core\output\notification::NOTIFY_SUCCESS : \core\output\notification::NOTIFY_WARNING);
+        echo $OUTPUT->notification(
+            get_string($ok ? 'aitestok' : 'aitestunreadable', 'mod_mylkpd', $seconds),
+            $ok ? \core\output\notification::NOTIFY_SUCCESS : \core\output\notification::NOTIFY_WARNING
+        );
         echo html_writer::tag('p', get_string('aitestreply', 'mod_mylkpd'));
         echo html_writer::tag('pre', s(core_text::substr($reply, 0, 3000)), ['class' => 'mylkpd-aitest-reply']);
     } catch (moodle_exception $e) {
-        echo $OUTPUT->notification(get_string('aitestfailed', 'mod_mylkpd') . ' ' . s($e->getMessage()),
-            \core\output\notification::NOTIFY_ERROR);
+        echo $OUTPUT->notification(
+            get_string('aitestfailed', 'mod_mylkpd') . ' ' . s($e->getMessage()),
+            \core\output\notification::NOTIFY_ERROR
+        );
     }
 }
 
-echo $OUTPUT->single_button(new moodle_url($PAGE->url, ['run' => 1, 'sesskey' => sesskey()]),
-    get_string('aitestrun', 'mod_mylkpd'), 'post');
+echo $OUTPUT->single_button(
+    new moodle_url($PAGE->url, ['run' => 1, 'sesskey' => sesskey()]),
+    get_string('aitestrun', 'mod_mylkpd'),
+    'post'
+);
 echo html_writer::div(html_writer::link($settingsurl, get_string('aitestback', 'mod_mylkpd')), 'mt-3');
 echo $OUTPUT->footer();

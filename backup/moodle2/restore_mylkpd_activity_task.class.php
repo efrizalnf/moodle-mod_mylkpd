@@ -31,7 +31,6 @@ require_once($CFG->dirroot . '/mod/mylkpd/backup/moodle2/restore_mylkpd_stepslib
  * Provides the steps to restore one MyLKPD activity.
  */
 class restore_mylkpd_activity_task extends restore_activity_task {
-
     /**
      * No specific settings for this activity.
      */

@@ -17,7 +17,7 @@
 defined('MOODLE_INTERNAL') || die();
 
 $plugin->component = 'mod_mylkpd';
-$plugin->version   = 2026111900;
-$plugin->requires  = 2022112800; // Moodle 4.1 atau lebih baru.
+$plugin->version   = 2026112000;
+$plugin->requires  = 2023042400; // Moodle 4.2 (core_external web services).
 $plugin->maturity  = MATURITY_BETA;
-$plugin->release   = '1.3.3';
+$plugin->release   = '1.4.0';

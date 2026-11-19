@@ -1,12 +1,25 @@
 <?php
 // This file is part of Moodle - https://moodle.org/
+//
+// Moodle is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Moodle is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with Moodle.  If not, see <https://www.gnu.org/licenses/>.
 
 /**
  * Teacher overview of all submissions (per student or per group).
  *
  * @package    mod_mylkpd
  * @copyright  2026 Zalira
- * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
 require(__DIR__ . '/../../config.php');
@@ -42,11 +55,11 @@ if ($aion) {
     foreach (['bulkconfirm', 'bulkprogress', 'bulkdone', 'checking', 'failed'] as $k) {
         $bulkstrings[$k] = get_string('ai' . $k, 'mod_mylkpd');
     }
-    $PAGE->requires->js(new moodle_url('/mod/mylkpd/js/aicheck.js'));
-    $PAGE->requires->js_init_code('MyLKPDAI.initBulk(' . json_encode([
-        'url' => (new moodle_url('/mod/mylkpd/aicheck.php'))->out(false), 'cmid' => (int) $cm->id, 'sesskey' => sesskey(),
-        'grade' => (float) $mylkpd->grade, 'decsep' => get_string('decsep', 'langconfig'), 'strings' => $bulkstrings,
-    ]) . ');', true);
+    echo $OUTPUT->render_from_template('mod_mylkpd/config_holder', ['id' => 'mylkpd-bulk-config', 'config' => json_encode([
+        'cmid' => (int) $cm->id, 'grade' => (float) $mylkpd->grade, 'decsep' => get_string('decsep', 'langconfig'),
+        'strings' => $bulkstrings,
+    ], JSON_UNESCAPED_UNICODE)]);
+    $PAGE->requires->js_call_amd('mod_mylkpd/aicheck', 'initBulk', ['mylkpd-bulk-config']);
 }
 
 /**

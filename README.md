@@ -1,14 +1,23 @@
 # MyLKPD (mod_mylkpd) — LKPD Interaktif untuk Moodle
 
-Versi 1.3.3 (beta) · Moodle 4.1+ · dibuat oleh **Zalira**
+[![Moodle Plugin CI](https://github.com/efrizalnf/moodle-mod_mylkpd/actions/workflows/ci.yml/badge.svg)](https://github.com/efrizalnf/moodle-mod_mylkpd/actions/workflows/ci.yml)
 
-Plugin aktivitas Moodle (4.1+). Guru cukup mengunggah LKPD (PDF atau Word), siswa mengerjakan
+Versi 1.4.0 (beta) · Moodle 4.2+ · dibuat oleh **Zalira** · [English below](#english)
+
+Plugin aktivitas Moodle (4.2+). Guru cukup mengunggah LKPD (PDF atau Word), siswa mengerjakan
 langsung di atas halaman LKPD, lalu guru menilai dari Moodle. Nilai otomatis masuk Gradebook.
 
 ## Instalasi / update
 1. Site administration > Plugins > Install plugins > unggah ZIP (atau ekstrak ke `moodle/mod/mylkpd`).
 2. Site administration > Notifications untuk menjalankan instalasi/upgrade database.
 3. Site administration > Development > Purge caches.
+
+## Backup, restore, impor, duplikat
+MyLKPD mendukung Backup/Restore API Moodle, jadi aktivitas bisa **dipakai ulang di kursus lain**:
+*Course reuse > Import*, *Backup* lalu *Restore*, dan *Duplicate* di halaman kursus. Yang ikut: file LKPD,
+pengaturan (jadwal, potongan, mode kelompok, AI), kunci jawaban beserta area soal/jawaban, rubrik, dan event
+kalender. Dengan data pengguna: jawaban siswa/kelompok, gambar, label penulis, konfirmasi anggota, nilai, dan
+rubrik yang sudah diisi (ID pengguna dan grup dipetakan ulang di situs tujuan).
 
 ## Format file
 | File | Cara tampil |
@@ -201,20 +210,28 @@ huruf hijaiyah + harakat + angka Arab), **Tautan**.
 Posisi gambar disimpan dalam persen halaman, jadi tetap pas di HP maupun laptop.
 
 ## Struktur
-- version.php, lib.php, locallib.php, mod_form.php
-- view.php (siswa), ajax.php (autosave/sinkron), upload.php (unggah gambar), keys.php (kunci jawaban),
-  aicheck.php (pemeriksaan AI), aistatus.php & aitest.php (cek koneksi AI), settings.php (pengaturan plugin),
-  classes/ai (klien & pemeriksa AI), classes/admin (widget status koneksi), classes/dates.php (tanggal aktivitas),
-  classes/task (pemeriksaan AI terjadwal) & db/tasks.php, submissions.php (daftar), grade.php (penilaian), index.php
-- db/install.xml, db/upgrade.php, db/access.php
-- classes/event, classes/form, classes/privacy
-- js/worksheet.js (editor), styles.css
+- version.php, lib.php, locallib.php, mod_form.php, settings.php, index.php
+- view.php (siswa), grade.php (penilaian), submissions.php (daftar), keys.php (kunci jawaban),
+  aitest.php (uji koneksi AI), upload.php (unggah gambar, multipart)
+- classes/external — web service `mod_mylkpd_sync_worksheet`, `mod_mylkpd_check_submission`,
+  `mod_mylkpd_test_ai_connection` (dipanggil lewat `core/ajax`, terdaftar di db/services.php)
+- classes/ai (klien & pemeriksa AI), classes/task (pemeriksaan AI terjadwal), classes/admin (widget status),
+  classes/dates.php, classes/event, classes/form, classes/privacy
+- backup/moodle2 — Backup/Restore API
+- templates/*.mustache — tampilan (toolbar, LKPD, kartu status, form kerja, panel AI, status koneksi)
+- amd/src/*.js (modul ES6: worksheet, keys, aicheck, aistatus, confirm) dan amd/build (hasil build)
+- db/install.xml, db/upgrade.php, db/access.php, db/services.php, db/tasks.php
 - js/pdfjs (PDF.js 3.11.174), js/docx (docx-preview 0.4.1 + JSZip 3.10.1), js/katex (KaTeX 0.16.29) — lihat thirdpartylibs.xml
-- lang/en, lang/id
+- lang/en, lang/id, styles.css, LICENSE (GPL v3), .github/workflows/ci.yml (moodle-plugin-ci)
 
-## Belum ada
-Backup/restore kursus, kunci jawaban otomatis, coretan koreksi dari guru, riwayat versi.
-Sinkronisasi memakai polling (bukan WebSocket): cocok untuk kelompok kecil (2–8 siswa).
+## Pengembangan
+- JavaScript ada di `amd/src`. Setelah mengubahnya, bangun ulang dari folder Moodle:
+  `npx grunt amd --root=mod/mylkpd` (menjalankan ESLint dan membuat `amd/build/*.min.js`; commit keduanya).
+- Setiap push ke GitHub menjalankan moodle-plugin-ci (phplint, phpcs, phpdoc, validate, savepoints,
+  mustache, grunt, phpunit, behat) untuk Moodle 4.4, 4.5, dan 5.0.
+
+## Batasan
+Sinkronisasi memakai polling tiap 3 detik (bukan WebSocket): cocok untuk kelompok kecil (2–8 siswa).
 
 ## Riwayat versi
 Penomoran: `release` di `version.php` memakai pola **MAYOR.MINOR.PATCH** (fitur baru menaikkan MINOR,
@@ -223,7 +240,8 @@ rilis dengan nomor `release` yang sama, agar Moodle menjalankan upgrade.
 
 | Versi | `$plugin->version` | Perubahan utama |
 |---|---|---|
-| **1.3.3** | 2026111900 | **Tabel** di editor (pemilih ukuran, isi sel, + / − baris & kolom, gaya/ketebalan/warna garis, warna baris judul & sel) dengan mini-toolbar yang muncul di atas tabel; **pemeriksaan AI terjadwal** yang menyimpan nilai otomatis (tidak menimpa nilai guru); **Pilih soal** di Kunci jawaban (teks soal tersalin otomatis, juga dari PDF); potongan terlambat per hari menjadi **checkbox** (tidak dicentang = sekali); **halaman kosong** dan ruang kosong di akhir dokumen tidak lagi ditampilkan. |
+| **1.4.0** | 2026112000 | **Backup/Restore** (aktivitas bisa diimpor, diduplikat, dan dipakai ulang di kursus lain, termasuk jawaban, rubrik terisi, dan kalender); AJAX diganti **External Services**; JavaScript menjadi **modul AMD ES6** (lolos ESLint Moodle tanpa peringatan); tampilan memakai **template Mustache**; dialog konfirmasi Moodle; file **LICENSE**; header GPL lengkap; **GitHub Actions** (moodle-plugin-ci); README berbahasa Inggris. Syarat minimum naik ke **Moodle 4.2**. |
+| 1.3.3 | 2026111900 | **Tabel** di editor (pemilih ukuran, isi sel, + / − baris & kolom, gaya/ketebalan/warna garis, warna baris judul & sel) dengan mini-toolbar yang muncul di atas tabel; **pemeriksaan AI terjadwal** yang menyimpan nilai otomatis (tidak menimpa nilai guru); **Pilih soal** di Kunci jawaban (teks soal tersalin otomatis, juga dari PDF); potongan terlambat per hari menjadi **checkbox** (tidak dicentang = sekali); **halaman kosong** dan ruang kosong di akhir dokumen tidak lagi ditampilkan. |
 | 1.3.2 | 2026111804 | Perataan paragraf dan kotak teks (**rata kiri, tengah, kanan, kanan-kiri**); jadwal **Dibuka / Batas waktu / Ditutup** (kalender, Timeline, tanggal di halaman kursus); **potongan nilai terlambat** otomatis (sekali atau per hari); **pengumpulan kelompok**: cukup perwakilan atau semua anggota; **status koneksi AI** dan tombol *Cek koneksi* di pengaturan; AI kompatibel **9router** (pembaca balasan tangguh, uji koneksi dengan balasan mentah); status **Benar / Sebagian / Salah** di tabel dan langsung di LKPD; kolom **Skor AI** dan **Periksa semua dengan AI**; deteksi soal lebih luas. |
 | 1.3.0 | 2026111800 | Pemeriksaan esai dengan AI (Claude / OpenAI), halaman **Kunci jawaban** dengan area jawaban dan deteksi soal; watermark "dibuat oleh Zalira"; tautan bisa diklik di mode baca. |
 | 1.2.1 | 2026111701 | Guru mengedit teks LKPD siswa langsung; tautan otomatis bisa diklik; tabel tidak terpotong; toolbar selalu di bawah bar tema. |
@@ -239,3 +257,30 @@ rilis dengan nomor `release` yang sama, agar Moodle menjalankan upgrade.
 ## Pembuat
 MyLKPD dikembangkan oleh **Zalira**. Keterangan "MyLKPD · dibuat oleh Zalira" tampil di bawah LKPD dan di
 halaman pengaturan plugin.
+
+---
+
+## English
+
+**MyLKPD — interactive worksheets for Moodle.** An activity module (Moodle 4.2+) that turns an ordinary worksheet
+(PDF or Word) into an interactive one. The teacher uploads the file; students answer directly on the pages and
+the teacher grades in Moodle, with grades going to the gradebook.
+
+Features:
+- **Answer on the page**: type into Word paragraphs and tables, or annotate (text boxes, ticks, crosses, circles,
+  highlighter, lines, pen, eraser), add pictures, tables, equations (KaTeX), symbols, Arabic text and links,
+  with paragraph alignment, colours, undo/redo and autosave.
+- **Group work**: live collaboration with author labels and who is online; one member submits for the group, or
+  every member must submit.
+- **Schedule**: opening time, due date, cut-off (calendar and Timeline), with an automatic late penalty (once or per day).
+- **Grading**: point grades, scales or rubrics (advanced grading); teacher notes and annotations on the student's work.
+- **AI essay checking** (optional, Claude or any OpenAI-compatible API): an answer key per question linked to its
+  answer area; suggested scores and feedback, or scheduled automatic grading that never replaces a teacher's grade.
+- **Backup/restore**, import and duplicate: reuse a worksheet in other courses.
+- Privacy API, GDPR export/delete, English and Indonesian language packs.
+
+Installation: Site administration > Plugins > Install plugins (ZIP) or copy to `mod/mylkpd`, then visit
+Notifications. AI checking is set up under Site administration > Plugins > Activity modules > MyLKPD
+(use "Check connection").
+
+Made by **Zalira** · License: GNU GPL v3 or later · Issues: https://github.com/efrizalnf/moodle-mod_mylkpd/issues

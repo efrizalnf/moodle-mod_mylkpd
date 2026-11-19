@@ -1,12 +1,25 @@
 <?php
 // This file is part of Moodle - https://moodle.org/
+//
+// Moodle is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Moodle is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with Moodle.  If not, see <https://www.gnu.org/licenses/>.
 
 /**
  * Internal helpers for mod_mylkpd.
  *
  * @package    mod_mylkpd
  * @copyright  2026 Zalira
- * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
 defined('MOODLE_INTERNAL') || die();
@@ -969,15 +982,13 @@ function mylkpd_get_questions(stdClass $mylkpd): array {
 }
 
 /**
- * The "made by Zalira" credit shown under the worksheet.
+ * Text of the "made by Zalira" credit shown under the worksheet.
  *
- * @return string HTML
+ * @return string
  */
-function mylkpd_credit(): string {
+function mylkpd_credit_text(): string {
     $info = core_plugin_manager::instance()->get_plugin_info('mod_mylkpd');
-    $release = ($info && !empty($info->release)) ? $info->release : '';
-    return html_writer::div(get_string('credit', 'mod_mylkpd', $release), 'mylkpd-credit',
-        ['data-mylkpd-credit' => 'zalira']);
+    return get_string('credit', 'mod_mylkpd', ($info && !empty($info->release)) ? $info->release : '');
 }
 
 /**
@@ -1058,7 +1069,7 @@ function mylkpd_display_grade(stdClass $mylkpd, $grade): string {
 }
 
 /**
- * Toolbar button.
+ * One toolbar button (template data for mod_mylkpd/toolbar_button).
  *
  * @param string $attr data attribute name (without data-mylkpd-)
  * @param string $value
@@ -1066,29 +1077,16 @@ function mylkpd_display_grade(stdClass $mylkpd, $grade): string {
  * @param string $label
  * @param bool $showlabel
  * @param bool $active
- * @return string
+ * @return array
  */
 function mylkpd_toolbar_button(string $attr, string $value, string $icon, string $label, bool $showlabel = true,
-        bool $active = false): string {
-    $attrs = [
-        'type' => 'button',
-        'class' => 'btn btn-sm ' . ($active ? 'btn-primary' : 'btn-outline-secondary'),
-        'data-mylkpd-' . $attr => $value,
-        'title' => $label,
-        'aria-label' => $label,
-    ];
-    if ($attr === 'tool') {
-        $attrs['aria-pressed'] = $active ? 'true' : 'false';
-    }
-    $content = html_writer::span($icon, 'mylkpd-icon', ['aria-hidden' => 'true']);
-    if ($showlabel) {
-        $content .= html_writer::span($label, 'mylkpd-tool-label');
-    }
-    return html_writer::tag('button', $content, $attrs);
+        bool $active = false): array {
+    return ['attr' => $attr, 'value' => $value, 'icon' => $icon, 'label' => $label, 'showlabel' => $showlabel,
+        'active' => $active, 'istool' => $attr === 'tool'];
 }
 
 /**
- * Builds the editing toolbar (inspired by CKEditor): one sticky panel with grouped tools.
+ * Template data for the editing toolbar (inspired by CKEditor): one sticky panel with grouped tools.
  *
  * Row 1: tools (type, move, draw...) | alignment | undo/redo.
  * Row 2: text formatting (docx) | colour and thickness | inserts | help.
@@ -1096,17 +1094,17 @@ function mylkpd_toolbar_button(string $attr, string $value, string $icon, string
  *
  * @param bool $cantype whether the document is a .docx shown in the browser (typing in paragraphs possible)
  * @param string $defaulttool
- * @param string $teambar HTML for group work (presence and names toggle), or ''
- * @return string HTML
+ * @param bool $teacher whether a teacher annotates a student's worksheet
+ * @param bool $team whether it is group work
+ * @return array context for mod_mylkpd/toolbar
  */
-function mylkpd_render_toolbar(bool $cantype, string $defaulttool, string $teambar = '', bool $teacher = false): string {
+function mylkpd_toolbar_context(bool $cantype, string $defaulttool, bool $teacher = false, bool $team = false): array {
     $s = function($key) {
         return get_string($key, 'mod_mylkpd');
     };
-    $group = function(string $content, string $label, string $extra = '') {
-        return html_writer::div($content, trim('mylkpd-group ' . $extra), ['role' => 'group', 'aria-label' => $label]);
+    $group = function(string $label, string $extra, array $more) {
+        return ['label' => $label, 'extra' => $extra] + $more;
     };
-    $html = html_writer::start_div('mylkpd-toolbar', ['role' => 'toolbar', 'aria-label' => $s('toolbar')]);
 
     // Row 1.
     $tools = [];
@@ -1119,34 +1117,12 @@ function mylkpd_render_toolbar(bool $cantype, string $defaulttool, string $teamb
     }
     $tools += ['check' => '&#10003;', 'cross' => '&#10007;',
         'circle' => '&#9711;', 'highlight' => '&#9644;', 'line' => '&#9585;', 'pen' => '&#9998;', 'erase' => '&#9003;'];
-    $buttons = '';
+    $buttons = [];
     foreach ($tools as $tool => $icon) {
-        $buttons .= mylkpd_toolbar_button('tool', $tool, $icon, $s('tool' . $tool), true, $tool === $defaulttool);
+        $buttons[] = mylkpd_toolbar_button('tool', $tool, $icon, $s('tool' . $tool), true, $tool === $defaulttool);
     }
-    $row1 = $group($buttons, $s('tools'), 'mylkpd-tools');
+    $row1 = [$group($s('tools'), 'mylkpd-tools', ['buttons' => $buttons])];
 
-    $names = ['colorblue', 'colorred', 'colorblack', 'colorgreen', 'coloryellow'];
-    $style = '';
-    $activecolor = $teacher ? 1 : 0; // Teachers correct in red.
-    foreach (mylkpd_colors() as $i => $color) {
-        $label = $s($names[$i]);
-        $style .= html_writer::tag('button', '', [
-            'type' => 'button',
-            'class' => 'mylkpd-swatch' . ($i === $activecolor ? ' active' : ''),
-            'style' => 'background-color:' . $color,
-            'data-mylkpd-color' => $color,
-            'aria-pressed' => $i === $activecolor ? 'true' : 'false',
-            'aria-label' => $label,
-            'title' => $label,
-        ]);
-    }
-    $style .= html_writer::select([2 => $s('widththin'), 4 => $s('widthmedium'), 8 => $s('widththick')],
-        'mylkpdwidth', 4, false, [
-            'class' => 'custom-select form-select form-select-sm mylkpd-width',
-            'data-mylkpd-width' => '1',
-            'aria-label' => $s('width'),
-            'title' => $s('width'),
-        ]);
     $icon = function(array $widths, string $anchor): string {
         // Four lines of different lengths, aligned like the text they stand for.
         $lines = '';
@@ -1157,25 +1133,19 @@ function mylkpd_render_toolbar(bool $cantype, string $defaulttool, string $teamb
         return '<svg class="mylkpd-svgicon" viewBox="0 0 15 15" width="15" height="15" fill="currentColor" aria-hidden="true">' .
             $lines . '</svg>';
     };
-    $aligns = [
-        'left' => $icon([13, 9, 13, 7], 'left'),
-        'center' => $icon([13, 9, 13, 7], 'center'),
-        'right' => $icon([13, 9, 13, 7], 'right'),
-        'justify' => $icon([13, 13, 13, 13], 'left'),
-    ];
-    $buttons = '';
-    foreach ($aligns as $align => $svg) {
-        $buttons .= mylkpd_toolbar_button('align', $align, $svg, $s('align' . $align), false);
+    $buttons = [];
+    foreach (['left' => [[13, 9, 13, 7], 'left'], 'center' => [[13, 9, 13, 7], 'center'], 'right' => [[13, 9, 13, 7], 'right'],
+            'justify' => [[13, 13, 13, 13], 'left']] as $align => [$widths, $anchor]) {
+        $buttons[] = mylkpd_toolbar_button('align', $align, $icon($widths, $anchor), $s('align' . $align), false);
     }
-    $row1 .= $group($buttons, $s('alignment'), 'mylkpd-aligngroup');
-    $row1 .= $group(
-        mylkpd_toolbar_button('action', 'undo', '&#8630;', $s('undo') . ' (Ctrl+Z)', false) .
+    $row1[] = $group($s('alignment'), 'mylkpd-aligngroup', ['buttons' => $buttons]);
+    $row1[] = $group($s('history'), 'mylkpd-history', ['buttons' => [
+        mylkpd_toolbar_button('action', 'undo', '&#8630;', $s('undo') . ' (Ctrl+Z)', false),
         mylkpd_toolbar_button('action', 'redo', '&#8631;', $s('redo') . ' (Ctrl+Y)', false),
-        $s('history'), 'mylkpd-history');
-    $html .= html_writer::div($row1, 'mylkpd-row');
+    ]]);
 
     // Row 2.
-    $row2 = '';
+    $row2 = [];
     if ($cantype) {
         $formats = [
             'bold' => '<b>B</b>', 'italic' => '<i>I</i>', 'underline' => '<u>U</u>', 'strikeThrough' => '<s>S</s>',
@@ -1183,32 +1153,55 @@ function mylkpd_render_toolbar(bool $cantype, string $defaulttool, string $teamb
             'foreColor' => '<span class="mylkpd-a-color">A</span>', 'hiliteColor' => '<span class="mylkpd-a-mark">ab</span>',
             'removeFormat' => '&#10008;<small>T</small>',
         ];
-        $buttons = '';
-        foreach ($formats as $cmd => $icon) {
-            $buttons .= mylkpd_toolbar_button('format', $cmd, $icon, $s('format' . strtolower($cmd)), false);
+        $buttons = [];
+        foreach ($formats as $cmd => $fmticon) {
+            $buttons[] = mylkpd_toolbar_button('format', $cmd, $fmticon, $s('format' . strtolower($cmd)), false);
         }
-        $row2 .= $group($buttons, $s('formatting'), 'mylkpd-formatgroup');
+        $row2[] = $group($s('formatting'), 'mylkpd-formatgroup', ['buttons' => $buttons]);
     }
-    $row2 .= $group($style, $s('color'), 'mylkpd-style');
-    $buttons = '';
+    $names = ['colorblue', 'colorred', 'colorblack', 'colorgreen', 'coloryellow'];
+    $activecolor = $teacher ? 1 : 0; // Teachers correct in red.
+    $swatches = [];
+    foreach (mylkpd_colors() as $i => $color) {
+        $swatches[] = ['color' => $color, 'label' => $s($names[$i]), 'active' => $i === $activecolor];
+    }
+    $widths = [];
+    foreach ([2 => 'widththin', 4 => 'widthmedium', 8 => 'widththick'] as $value => $key) {
+        $widths[] = ['value' => $value, 'label' => $s($key), 'selected' => $value === 4];
+    }
+    $row2[] = $group($s('color'), 'mylkpd-style', ['swatches' => $swatches,
+        'widths' => ['label' => $s('width'), 'options' => $widths]]);
+    $buttons = [];
     foreach (['image' => '&#128444;', 'table' => '&#9638;', 'math' => '&#8721;', 'symbol' => '&#937;', 'arabic' => '&#1593;',
-            'link' => '&#128279;'] as $what => $icon) {
-        $buttons .= mylkpd_toolbar_button('insert', $what, $icon, $s('insert' . $what));
+            'link' => '&#128279;'] as $what => $inserticon) {
+        $buttons[] = mylkpd_toolbar_button('insert', $what, $inserticon, $s('insert' . $what));
     }
-    $row2 .= $group($buttons, $s('insert'), 'mylkpd-inserts');
-    $row2 .= html_writer::tag('details',
-        html_writer::tag('summary', '&#9432; ' . $s('help'), ['class' => 'btn btn-sm btn-link']) .
-        html_writer::div($s($teacher ? 'teacherhint' : ($cantype ? 'toolhinttype' : 'toolhint')), 'mylkpd-help-text small'),
-        ['class' => 'mylkpd-help']);
-    $html .= html_writer::div($row2, 'mylkpd-row');
+    $row2[] = $group($s('insert'), 'mylkpd-inserts', ['buttons' => $buttons]);
 
-    // Messages (where to click, what to do next).
-    $html .= html_writer::div('', 'mylkpd-hint small', ['data-mylkpd-hint' => 1, 'role' => 'status', 'aria-live' => 'polite']);
-    if ($teambar !== '') {
-        $html .= html_writer::div($teambar, 'mylkpd-row mylkpd-teamrow');
-    }
-    $html .= html_writer::end_div();
-    return $html;
+    return [
+        'label' => $s('toolbar'),
+        'rows' => [
+            ['groups' => $row1],
+            ['groups' => $row2, 'help' => ['title' => $s('help'),
+                'text' => $s($teacher ? 'teacherhint' : ($cantype ? 'toolhinttype' : 'toolhint'))]],
+        ],
+        'presence' => $team && !$teacher,
+        'namestoggle' => $team ? get_string('shownames', 'mod_mylkpd') : '',
+    ];
+}
+
+/**
+ * The editing toolbar as HTML.
+ *
+ * @param bool $cantype
+ * @param string $defaulttool
+ * @param bool $teacher
+ * @param bool $team
+ * @return string
+ */
+function mylkpd_render_toolbar(bool $cantype, string $defaulttool, bool $teacher = false, bool $team = false): string {
+    global $OUTPUT;
+    return $OUTPUT->render_from_template('mod_mylkpd/toolbar', mylkpd_toolbar_context($cantype, $defaulttool, $teacher, $team));
 }
 
 /**
@@ -1292,7 +1285,6 @@ function mylkpd_render_worksheet(stdClass $mylkpd, $cm, context_module $context,
         'katexBase' => (new moodle_url(MYLKPD_KATEX_PATH))->out(false),
         'canType' => $cantype,
         'defaultTool' => $defaulttool,
-        'syncUrl' => (new moodle_url('/mod/mylkpd/ajax.php'))->out(false),
         'uploadUrl' => (new moodle_url('/mod/mylkpd/upload.php'))->out(false),
         'imageBase' => moodle_url::make_pluginfile_url($context->id, 'mod_mylkpd', 'answerimage', 0, '/', 'x')->out(false),
         'submissionId' => (int) ($submission->id ?? 0),
@@ -1375,28 +1367,15 @@ function mylkpd_render_worksheet(stdClass $mylkpd, $cm, context_module $context,
     ];
 
     $config = $extracfg + $config;
-    $PAGE->requires->js(new moodle_url('/mod/mylkpd/js/worksheet.js'));
-    $PAGE->requires->js_init_code('MyLKPD.init(' . json_encode($config) . ');', true);
-
-    $html = '';
-    $toggle = '';
-    if ($team) {
-        $toggle = html_writer::tag('label',
-            html_writer::empty_tag('input', ['type' => 'checkbox', 'checked' => 'checked', 'data-mylkpd-names' => 1,
-                'class' => 'form-check-input me-1 mr-1']) . get_string('shownames', 'mod_mylkpd'),
-            ['class' => 'mylkpd-namestoggle small']);
-    }
-    if (!$readonly) {
-        $teambar = ($team && !$isteacher) ?
-            html_writer::div('', 'mylkpd-presence', ['id' => 'mylkpd-presence', 'aria-live' => 'polite']) . $toggle :
-            ($team ? $toggle : '');
-        $html .= mylkpd_render_toolbar($cantype, $defaulttool, $teambar, $isteacher);
-    } else if ($team) {
-        $html .= html_writer::div($toggle, 'mylkpd-teambar');
-    }
-    $classes = 'mylkpd-container' . ($cantype ? ' mylkpd-work-edit' : '') . ' mylkpd-mode-' . ($readonly ? 'view' : $defaulttool);
-    $html .= html_writer::div('', $classes, ['id' => 'mylkpd-container']);
-    $html .= mylkpd_credit();
+    // The settings travel in a data attribute: they are too large for js_call_amd arguments.
+    $PAGE->requires->js_call_amd('mod_mylkpd/worksheet', 'init', ['mylkpd-container']);
+    $html = $OUTPUT->render_from_template('mod_mylkpd/worksheet', [
+        'toolbar' => $readonly ? false : mylkpd_toolbar_context($cantype, $defaulttool, $isteacher, $team),
+        'namestoggle' => ($readonly && $team) ? get_string('shownames', 'mod_mylkpd') : '',
+        'classes' => 'mylkpd-container' . ($cantype ? ' mylkpd-work-edit' : '') . ' mylkpd-mode-' . ($readonly ? 'view' : $defaulttool),
+        'config' => json_encode($config, JSON_UNESCAPED_UNICODE),
+        'credit' => mylkpd_credit_text(),
+    ]);
 
     return ['html' => $html, 'ready' => true];
 }

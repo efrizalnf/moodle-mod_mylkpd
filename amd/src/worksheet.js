@@ -296,6 +296,12 @@ function start(cfg) {
     var submissionId = cfg.submissionId;
     var imageBase = cfg.imageBase.replace(/\/0\/x$/, '');
     var stateEl = document.getElementById('mylkpd-savestate');
+    // Unsent changes are also kept in this browser, per activity, user and (for teachers) target worksheet.
+    var pendingKey = 'mod_mylkpd_pending_' + cfg.cmid + '_' + cfg.userid + '_' +
+        (cfg.target ? (cfg.target.targetuser || 0) + '_' + (cfg.target.targetgroup || 0) : 'own');
+    var noticeEl = null;
+    var noticeTimer = null;
+    var wasOffline = false;
     var presenceEl = document.getElementById('mylkpd-presence');
 
     items.forEach(function(it) {
@@ -378,6 +384,124 @@ function start(cfg) {
         }
         stateEl.textContent = text;
         stateEl.className = 'mylkpd-savestate small mylkpd-state-' + (key || 'none');
+    }
+
+    /**
+     * Whether the browser says there is no network connection.
+     *
+     * @return {Boolean}
+     */
+    function isOffline() {
+        return navigator.onLine === false;
+    }
+
+    /**
+     * Whether a failed request failed because the connection is missing (not because the server refused it).
+     *
+     * @param {*} err error from core/ajax or fetch
+     * @return {Boolean}
+     */
+    function isNetworkError(err) {
+        if (isOffline()) {
+            return true;
+        }
+        var text = String((err && (err.message || err.errorcode)) || err || '');
+        return /network|failed to fetch|load failed|offline|timed? ?out|connection/i.test(text);
+    }
+
+    /**
+     * Shows (or hides) a message in the page itself. Moodle dialogs load their templates from the server,
+     * so they cannot open without a connection; this message always can.
+     *
+     * @param {String|null} key string in cfg.strings, or null to hide the message
+     * @param {String} kind warning, info, success or danger
+     * @param {Number} hideafter milliseconds before it hides itself (0 = stays)
+     */
+    function notice(key, kind, hideafter) {
+        clearTimeout(noticeTimer);
+        if (!noticeEl) {
+            noticeEl = document.createElement('div');
+            noticeEl.setAttribute('role', 'status');
+            noticeEl.setAttribute('aria-live', 'polite');
+            // Next to the Save/Submit buttons when there are any, otherwise above the worksheet.
+            var bar = document.querySelector('.mylkpd-actions');
+            if (bar) {
+                bar.insertBefore(noticeEl, bar.firstChild);
+            } else {
+                container.parentNode.insertBefore(noticeEl, container);
+            }
+        }
+        noticeEl.className = 'mylkpd-notice mylkpd-notice-' + (kind || 'info');
+        noticeEl.textContent = key ? cfg.strings[key] : '';
+        noticeEl.hidden = !key;
+        if (key && hideafter) {
+            noticeTimer = setTimeout(function() {
+                notice(null);
+            }, hideafter);
+        }
+    }
+
+    /**
+     * Keeps unsent changes in this browser so they survive a closed tab or a reload while offline.
+     * The copy is removed as soon as the server has everything.
+     *
+     * @param {Array|null} ops operations not yet saved on the server (null or empty: forget the copy)
+     */
+    function keepLocally(ops) {
+        try {
+            if (ops && ops.length) {
+                window.localStorage.setItem(pendingKey, JSON.stringify({time: Date.now(), ops: ops}));
+            } else {
+                window.localStorage.removeItem(pendingKey);
+            }
+        } catch (e) {
+            // Storage disabled or full: the in-page retry still sends the changes while the page stays open.
+            window.console.warn('MyLKPD: cannot keep unsent changes in this browser', e);
+        }
+    }
+
+    /**
+     * All changes not yet on the server, without losing them from the queue.
+     *
+     * @return {Array}
+     */
+    function snapshotPending() {
+        var ops = collectOps();
+        outbox = ops;
+        return ops;
+    }
+
+    /**
+     * Puts back changes kept in this browser by an earlier visit (e.g. the tab was closed while offline)
+     * and sends them.
+     */
+    function restoreKeptChanges() {
+        var stored = null;
+        try {
+            stored = JSON.parse(window.localStorage.getItem(pendingKey) || 'null');
+        } catch (e) {
+            stored = null;
+        }
+        if (!stored || !Array.isArray(stored.ops) || !stored.ops.length) {
+            return;
+        }
+        if (readonly) {
+            // Submitted or closed in the meantime: the changes can no longer be applied.
+            keepLocally(null);
+            return;
+        }
+        var res = {rev: rev, items: {}, blocks: {}};
+        stored.ops.forEach(function(o) {
+            if (o.kind === 'item') {
+                res.items[o.id] = o.op === 'del' ? {deleted: true} : o.data;
+            } else if (o.kind === 'block') {
+                res.blocks[o.id] = {html: o.html, align: o.align};
+            }
+        });
+        applyRemote(res);
+        outbox = stored.ops.concat(outbox);
+        notice('restoredlocal', 'info', 6000);
+        flush();
     }
 
     // ------------------------------------------------ Equations.
@@ -725,6 +849,13 @@ function start(cfg) {
             failed = false;
             lastError = '';
             applyRemote(res);
+            if (!hasPending()) {
+                keepLocally(null);
+            }
+            if (wasOffline) {
+                wasOffline = false;
+                notice('onlineagain', 'success', 5000);
+            }
             if (ops.length || (stateEl && stateEl.classList.contains('mylkpd-state-saveerror'))) {
                 setState('saved');
             }
@@ -738,7 +869,15 @@ function start(cfg) {
             outbox = ops.concat(outbox);
             failed = true;
             lastError = (err && err.message) ? String(err.message).slice(0, 120) : '';
-            setState('saveerror');
+            keepLocally(outbox);
+            if (isNetworkError(err)) {
+                wasOffline = true;
+                lastError = '';
+                setState('offlinestate');
+                notice('offlinebanner', 'warning');
+            } else {
+                setState('saveerror');
+            }
             window.console.error('MyLKPD sync:', err);
             return null;
         }).then(function() {
@@ -3528,6 +3667,11 @@ function start(cfg) {
      * Chooses image.
      */
     function chooseImage() {
+        if (isOffline() || wasOffline) {
+            // Pictures go straight to the server: say so before the student picks a file.
+            notice('offlineupload', 'warning', 6000);
+            return;
+        }
         if (!fileInput) {
             fileInput = document.createElement('input');
             fileInput.type = 'file';
@@ -3538,6 +3682,10 @@ function start(cfg) {
                 var file = fileInput.files && fileInput.files[0];
                 fileInput.value = '';
                 if (!file) {
+                    return;
+                }
+                if (isOffline() || wasOffline) {
+                    notice('offlineupload', 'warning', 6000);
                     return;
                 }
                 flashHint(cfg.strings.imageuploading, true);
@@ -4010,8 +4158,11 @@ function start(cfg) {
                     return flush();
                 }).then(function() {
                     saveBtn.disabled = false;
-                    if (failed || hasPending()) {
+                    if ((failed || hasPending()) && wasOffline) {
+                        notice('offlinebanner', 'warning');
+                    } else if (failed || hasPending()) {
                         setState('saveerror');
+                        notice('saveerror', 'danger');
                         tell(cfg.strings.saveerror + (lastError ? '\n\n' + lastError : ''), 'error');
                     } else {
                         setState('saved');
@@ -4024,7 +4175,18 @@ function start(cfg) {
         if (submitBtn) {
             submitBtn.addEventListener('click', function() {
                 var cancelled = {};
-                ask(cfg.strings.confirmsubmit).then(function(ok) {
+                // The browser's navigator.onLine stays true on a network without internet (e.g. Wi-Fi without a
+                // connection), so after a failed save try again before asking: the confirmation dialog needs the server.
+                var check = (isOffline() || wasOffline) ? flush() : Promise.resolve(null);
+                check.then(function() {
+                    if (isOffline() || wasOffline) {
+                        // The answers stay on this device until the connection is back.
+                        keepLocally(snapshotPending());
+                        notice('offlinesubmit', 'warning');
+                        return false;
+                    }
+                    return ask(cfg.strings.confirmsubmit);
+                }).then(function(ok) {
                     if (!ok) {
                         return cancelled;
                     }
@@ -4039,12 +4201,25 @@ function start(cfg) {
                     if (step === cancelled) {
                         return null;
                     }
+                    if ((failed || hasPending()) && (wasOffline || isOffline())) {
+                        submitBtn.disabled = false;
+                        notice('offlinesubmit', 'warning');
+                        return null;
+                    }
                     if (failed || hasPending()) {
                         submitBtn.disabled = false;
                         setState('saveerror');
+                        notice('saveerror', 'danger');
                         tell(cfg.strings.saveerror + (lastError ? '\n\n' + lastError : ''), 'error');
                         return null;
                     }
+                    if (isOffline()) {
+                        // The connection dropped after saving: posting the form now would show the browser's error page.
+                        submitBtn.disabled = false;
+                        notice('offlinesubmit', 'warning');
+                        return null;
+                    }
+                    keepLocally(null);
                     window.removeEventListener('beforeunload', warnUnsaved);
                     document.getElementById('mylkpd-submitfinal').value = '1';
                     submitBtn.form.submit();
@@ -4081,12 +4256,34 @@ function start(cfg) {
         });
         window.addEventListener('pagehide', function() {
             // Last chance to save when the tab closes.
-            if (hasPending() && navigator.sendBeacon && window.M && window.M.cfg) {
+            if (readonly || !hasPending()) {
+                return;
+            }
+            // Keep a copy on this device first: the beacon cannot reach the server while offline. If it does
+            // arrive, sending the same changes again on the next visit is harmless.
+            var ops = snapshotPending();
+            keepLocally(ops);
+            if (!isOffline() && navigator.sendBeacon && window.M && window.M.cfg) {
                 // The core/ajax module cannot run while the page unloads: send the same call to Moodle's service endpoint.
                 navigator.sendBeacon(window.M.cfg.wwwroot + '/lib/ajax/service.php?sesskey=' + window.M.cfg.sesskey +
                     '&info=mod_mylkpd_sync_worksheet', new Blob([JSON.stringify([{index: 0,
-                    methodname: 'mod_mylkpd_sync_worksheet', args: requestArgs(collectOps())}])], {type: 'application/json'}));
+                    methodname: 'mod_mylkpd_sync_worksheet', args: requestArgs(ops)}])], {type: 'application/json'}));
             }
+        });
+        document.addEventListener('visibilitychange', function() {
+            // Phones may close a background tab without pagehide: keep unsent changes when the page is hidden.
+            if (document.hidden && !readonly && hasPending()) {
+                keepLocally(snapshotPending());
+            }
+        });
+        window.addEventListener('offline', function() {
+            wasOffline = true;
+            setState('offlinestate');
+            notice('offlinebanner', 'warning');
+        });
+        window.addEventListener('online', function() {
+            // Send what was kept the moment the connection is back, instead of waiting for the next retry.
+            flush();
         });
         if (cfg.collab) {
             setInterval(function() {
@@ -4112,6 +4309,7 @@ function start(cfg) {
     }).then(function() {
         rebuild();
         hideBlankPages();
+        restoreKeptChanges();
         if (cfg.anchorEditor) {
             bindAnchorEditor();
         }

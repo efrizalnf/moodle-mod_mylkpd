@@ -26,7 +26,6 @@ use core\activity_dates;
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class dates extends activity_dates {
-
     /**
      * Returns the dates for this activity.
      *

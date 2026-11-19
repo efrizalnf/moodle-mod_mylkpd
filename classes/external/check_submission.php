@@ -29,7 +29,6 @@ use core_external\external_value;
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class check_submission extends external_api {
-
     /**
      * Parameters.
      *

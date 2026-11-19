@@ -24,7 +24,6 @@ namespace mod_mylkpd\task;
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class ai_autocheck extends \core\task\scheduled_task {
-
     /**
      * Name shown in the scheduled tasks list.
      *
@@ -41,7 +40,7 @@ class ai_autocheck extends \core\task\scheduled_task {
         global $CFG;
         require_once($CFG->dirroot . '/mod/mylkpd/locallib.php');
         \core_php_time_limit::raise(600);
-        $stats = mylkpd_ai_autocheck_run(40, function($message) {
+        $stats = mylkpd_ai_autocheck_run(40, function ($message) {
             mtrace('  ' . $message);
         });
         mtrace("  MyLKPD AI: {$stats['checked']} checked, {$stats['graded']} graded, {$stats['failed']} failed.");

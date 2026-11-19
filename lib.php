@@ -22,8 +22,6 @@
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-defined('MOODLE_INTERNAL') || die();
-
 /** Submission is still being worked on by the student. */
 define('MYLKPD_STATUS_DRAFT', 0);
 /** Submission has been handed in and is locked. */
@@ -179,8 +177,14 @@ function mylkpd_save_worksheet(stdClass $data): void {
     global $DB;
     $context = context_module::instance($data->coursemodule);
     $before = mylkpd_worksheet_hash($context);
-    file_save_draft_area_files($data->worksheet, $context->id, 'mod_mylkpd', 'worksheet', 0,
-        mylkpd_filemanager_options());
+    file_save_draft_area_files(
+        $data->worksheet,
+        $context->id,
+        'mod_mylkpd',
+        'worksheet',
+        0,
+        mylkpd_filemanager_options()
+    );
     if (mylkpd_worksheet_hash($context) !== $before) {
         get_file_storage()->delete_area_files($context->id, 'mod_mylkpd', 'pdf');
         $DB->set_field('mylkpd', 'rendermode', null, ['id' => $data->id]);
@@ -235,8 +239,11 @@ function mylkpd_delete_instance($id) {
     if (!$mylkpd = $DB->get_record('mylkpd', ['id' => $id])) {
         return false;
     }
-    $DB->delete_records_select('mylkpd_presence',
-        'submissionid IN (SELECT id FROM {mylkpd_submissions} WHERE mylkpdid = ?)', [$mylkpd->id]);
+    $DB->delete_records_select(
+        'mylkpd_presence',
+        'submissionid IN (SELECT id FROM {mylkpd_submissions} WHERE mylkpdid = ?)',
+        [$mylkpd->id]
+    );
     $DB->delete_records('mylkpd_submissions', ['mylkpdid' => $mylkpd->id]);
     $DB->delete_records('mylkpd_questions', ['mylkpdid' => $mylkpd->id]);
     $DB->delete_records('mylkpd', ['id' => $mylkpd->id]);
@@ -454,8 +461,11 @@ function mylkpd_refresh_events($courseid = 0, $instance = null, $cm = null) {
  * @param int $userid
  * @return \core_calendar\local\event\entities\action_interface|null
  */
-function mod_mylkpd_core_calendar_provide_event_action(calendar_event $event, \core_calendar\action_factory $factory,
-        int $userid = 0) {
+function mod_mylkpd_core_calendar_provide_event_action(
+    calendar_event $event,
+    \core_calendar\action_factory $factory,
+    int $userid = 0
+) {
     global $DB, $USER;
     $userid = $userid ?: (int) $USER->id;
     $cm = get_fast_modinfo($event->courseid, $userid)->instances['mylkpd'][$event->instance] ?? null;
@@ -473,8 +483,12 @@ function mod_mylkpd_core_calendar_provide_event_action(calendar_event $event, \c
         if ($sub && $sub->status == MYLKPD_STATUS_SUBMITTED) {
             return null;
         }
-        return $factory->create_instance(get_string('workonit', 'mod_mylkpd'),
-            new moodle_url('/mod/mylkpd/view.php', ['id' => $cm->id]), 1, mylkpd_can_work($mylkpd));
+        return $factory->create_instance(
+            get_string('workonit', 'mod_mylkpd'),
+            new moodle_url('/mod/mylkpd/view.php', ['id' => $cm->id]),
+            1,
+            mylkpd_can_work($mylkpd)
+        );
     }
     return null;
 }
@@ -487,8 +501,11 @@ function mod_mylkpd_core_calendar_provide_event_action(calendar_event $event, \c
  */
 function mylkpd_get_coursemodule_info($coursemodule) {
     global $DB;
-    $mylkpd = $DB->get_record('mylkpd', ['id' => $coursemodule->instance],
-        'id, name, intro, introformat, timeopen, duedate, cutoffdate');
+    $mylkpd = $DB->get_record(
+        'mylkpd',
+        ['id' => $coursemodule->instance],
+        'id, name, intro, introformat, timeopen, duedate, cutoffdate'
+    );
     if (!$mylkpd) {
         return false;
     }

@@ -31,7 +31,6 @@ require_once($CFG->dirroot . '/mod/mylkpd/backup/moodle2/backup_mylkpd_stepslib.
  * Provides the steps to back up one MyLKPD activity.
  */
 class backup_mylkpd_activity_task extends backup_activity_task {
-
     /**
      * No specific settings for this activity.
      */

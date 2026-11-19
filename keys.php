@@ -95,9 +95,11 @@ foreach ($questions as $q) {
         'points' => $q->keypoints, 'max' => (float) $q->maxscore, 'area' => $q->area];
 }
 $strings = [];
-foreach (['qlabel', 'qquestion', 'qkey', 'qpoints', 'qmax', 'qarea', 'qareanone', 'qareablocks', 'qarearegions',
+foreach (
+    ['qlabel', 'qquestion', 'qkey', 'qpoints', 'qmax', 'qarea', 'qareanone', 'qareablocks', 'qarearegions',
         'qpick', 'qpicking', 'qclear', 'qremove', 'qdetected', 'qdetectnone', 'qconfirmreplace', 'qpickquestion',
-        'qpickingquestion', 'qquestionarea', 'qquestionnone', 'qquestionpicked'] as $k) {
+        'qpickingquestion', 'qquestionarea', 'qquestionnone', 'qquestionpicked'] as $k
+) {
     $strings[$k] = get_string($k, 'mod_mylkpd');
 }
 $PAGE->requires->js_call_amd('mod_mylkpd/keys', 'init', ['mylkpd-keys-config']);
@@ -106,8 +108,10 @@ echo $OUTPUT->header();
 echo $OUTPUT->heading(get_string('answerkeys', 'mod_mylkpd'), 3);
 
 if (!mylkpd_ai_enabled($mylkpd)) {
-    echo $OUTPUT->notification(get_string(\mod_mylkpd\ai\client::site_enabled() ? 'aiactivityoff' : 'aisiteoff', 'mod_mylkpd'),
-        \core\output\notification::NOTIFY_WARNING);
+    echo $OUTPUT->notification(
+        get_string(\mod_mylkpd\ai\client::site_enabled() ? 'aiactivityoff' : 'aisiteoff', 'mod_mylkpd'),
+        \core\output\notification::NOTIFY_WARNING
+    );
 }
 echo $OUTPUT->render_from_template('mod_mylkpd/config_holder', ['id' => 'mylkpd-keys-config',
     'config' => json_encode(['rows' => $rows, 'strings' => $strings], JSON_UNESCAPED_UNICODE)]);
@@ -118,17 +122,24 @@ echo html_writer::start_tag('form', ['method' => 'post', 'action' => $PAGE->url-
     'id' => 'mylkpd-keys-form']);
 echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
 echo html_writer::div(
-    html_writer::tag('button', '&#10010; ' . get_string('qadd', 'mod_mylkpd'), ['type' => 'button', 'class' => 'btn btn-secondary btn-sm',
+    html_writer::tag('button', '&#10010; ' . get_string('qadd', 'mod_mylkpd'), [
+        'type' => 'button',
+        'class' => 'btn btn-secondary btn-sm',
         'data-mylkpd-keys' => 'add']) . ' ' .
     html_writer::tag('button', '&#128269; ' . get_string('qdetect', 'mod_mylkpd'), ['type' => 'button',
         'class' => 'btn btn-outline-secondary btn-sm', 'data-mylkpd-keys' => 'detect']),
-    'mylkpd-keys-tools');
+    'mylkpd-keys-tools'
+);
 echo html_writer::div('', 'mylkpd-keys-rows', ['id' => 'mylkpd-keys-rows']);
 echo html_writer::div(
     html_writer::tag('button', get_string('savechanges'), ['type' => 'submit', 'class' => 'btn btn-primary']) . ' ' .
-    html_writer::link(new moodle_url('/mod/mylkpd/submissions.php', ['id' => $cm->id]), get_string('back'),
-        ['class' => 'btn btn-link']),
-    'mylkpd-keys-actions');
+    html_writer::link(
+        new moodle_url('/mod/mylkpd/submissions.php', ['id' => $cm->id]),
+        get_string('back'),
+        ['class' => 'btn btn-link']
+    ),
+    'mylkpd-keys-actions'
+);
 echo html_writer::end_tag('form');
 echo html_writer::div($worksheet['html'], 'mylkpd-keys-preview');
 echo html_writer::end_div();

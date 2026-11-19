@@ -27,7 +27,6 @@
  * Reads mylkpd.xml back into a (new) course.
  */
 class restore_mylkpd_activity_structure_step extends restore_activity_structure_step {
-
     /**
      * Paths to process.
      *

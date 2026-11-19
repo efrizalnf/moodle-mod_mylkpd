@@ -24,14 +24,17 @@ namespace mod_mylkpd\admin;
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class setting_aistatus extends \admin_setting {
-
     /**
      * Constructor.
      */
     public function __construct() {
         $this->nosave = true;
-        parent::__construct('mod_mylkpd/aistatuswidget', get_string('aiconnection', 'mod_mylkpd'),
-            get_string('aiconnection_desc', 'mod_mylkpd'), '');
+        parent::__construct(
+            'mod_mylkpd/aistatuswidget',
+            get_string('aiconnection', 'mod_mylkpd'),
+            get_string('aiconnection_desc', 'mod_mylkpd'),
+            ''
+        );
     }
 
     /**
@@ -64,8 +67,10 @@ class setting_aistatus extends \admin_setting {
         global $OUTPUT, $PAGE;
         $last = json_decode((string) get_config('mod_mylkpd', 'aistatus'), true);
         $state = $last ? (!empty($last['ok']) ? 'ok' : 'fail') : 'none';
-        $title = get_string($state === 'ok' ? 'aiconnected' : ($state === 'fail' ? 'aidisconnected' : 'aineverchecked'),
-            'mod_mylkpd');
+        $title = get_string(
+            $state === 'ok' ? 'aiconnected' : ($state === 'fail' ? 'aidisconnected' : 'aineverchecked'),
+            'mod_mylkpd'
+        );
         $details = $last ? get_string('ailastchecked', 'mod_mylkpd', (object) [
             'time' => userdate($last['time'] ?? 0),
             'model' => $last['model'] ?? '',

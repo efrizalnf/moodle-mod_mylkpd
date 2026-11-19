@@ -30,7 +30,6 @@ use core_external\external_value;
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class sync_worksheet extends external_api {
-
     /**
      * Parameters.
      *
@@ -58,12 +57,24 @@ class sync_worksheet extends external_api {
      * @param int $targetgroup
      * @return array
      */
-    public static function execute(int $cmid, int $rev = 0, string $ops = '[]', string $block = '', int $targetuser = 0,
-            int $targetgroup = 0): array {
+    public static function execute(
+        int $cmid,
+        int $rev = 0,
+        string $ops = '[]',
+        string $block = '',
+        int $targetuser = 0,
+        int $targetgroup = 0
+    ): array {
         global $CFG, $DB, $USER;
         require_once($CFG->dirroot . '/mod/mylkpd/locallib.php');
-        $params = self::validate_parameters(self::execute_parameters(), compact('cmid', 'rev', 'ops', 'block', 'targetuser',
-            'targetgroup'));
+        $params = self::validate_parameters(self::execute_parameters(), compact(
+            'cmid',
+            'rev',
+            'ops',
+            'block',
+            'targetuser',
+            'targetgroup'
+        ));
         [$course, $cm] = get_course_and_cm_from_cmid($params['cmid'], 'mylkpd');
         $context = \context_module::instance($cm->id);
         self::validate_context($context);
@@ -84,8 +95,15 @@ class sync_worksheet extends external_api {
         }
 
         $changes = json_decode($params['ops'], true);
-        $result = mylkpd_sync($mylkpd, $cm, (int) $USER->id, $params['rev'], is_array($changes) ? $changes : [],
-            (string) $params['block'], $teacherfor);
+        $result = mylkpd_sync(
+            $mylkpd,
+            $cm,
+            (int) $USER->id,
+            $params['rev'],
+            is_array($changes) ? $changes : [],
+            (string) $params['block'],
+            $teacherfor
+        );
         return ['data' => json_encode($result, JSON_UNESCAPED_UNICODE)];
     }
 

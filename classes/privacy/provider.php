@@ -33,10 +33,9 @@ use core_privacy\local\request\writer;
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class provider implements
-        \core_privacy\local\metadata\provider,
-        \core_privacy\local\request\plugin\provider,
-        \core_privacy\local\request\core_userlist_provider {
-
+    \core_privacy\local\metadata\provider,
+    \core_privacy\local\request\core_userlist_provider,
+    \core_privacy\local\request\plugin\provider {
     /**
      * Describes stored personal data.
      *
@@ -78,10 +77,14 @@ class provider implements
                    JOIN {mylkpd_submissions} s ON s.mylkpdid = cm.instance";
         $list = new contextlist();
         $list->add_from_sql("$base WHERE s.userid = :userid", ['ctxlevel' => CONTEXT_MODULE, 'userid' => $userid]);
-        $list->add_from_sql("$base JOIN {groups_members} gm ON gm.groupid = s.groupid WHERE gm.userid = :userid",
-            ['ctxlevel' => CONTEXT_MODULE, 'userid' => $userid]);
-        $list->add_from_sql("$base JOIN {mylkpd_presence} p ON p.submissionid = s.id WHERE p.userid = :userid",
-            ['ctxlevel' => CONTEXT_MODULE, 'userid' => $userid]);
+        $list->add_from_sql(
+            "$base JOIN {groups_members} gm ON gm.groupid = s.groupid WHERE gm.userid = :userid",
+            ['ctxlevel' => CONTEXT_MODULE, 'userid' => $userid]
+        );
+        $list->add_from_sql(
+            "$base JOIN {mylkpd_presence} p ON p.submissionid = s.id WHERE p.userid = :userid",
+            ['ctxlevel' => CONTEXT_MODULE, 'userid' => $userid]
+        );
         return $list;
     }
 
@@ -162,8 +165,11 @@ class provider implements
         if ($cm = get_coursemodule_from_id('mylkpd', $context->instanceid)) {
             \core_grading\privacy\provider::delete_instance_data($context);
             get_file_storage()->delete_area_files($context->id, 'mod_mylkpd', 'answerimage');
-            $DB->delete_records_select('mylkpd_presence',
-                'submissionid IN (SELECT id FROM {mylkpd_submissions} WHERE mylkpdid = ?)', [$cm->instance]);
+            $DB->delete_records_select(
+                'mylkpd_presence',
+                'submissionid IN (SELECT id FROM {mylkpd_submissions} WHERE mylkpdid = ?)',
+                [$cm->instance]
+            );
             $DB->delete_records('mylkpd_submissions', ['mylkpdid' => $cm->instance]);
         }
     }
@@ -182,9 +188,11 @@ class provider implements
             }
             if ($cm = get_coursemodule_from_id('mylkpd', $context->instanceid)) {
                 // Group work belongs to the whole group, so only the member's own data is removed.
-                $DB->delete_records_select('mylkpd_presence',
+                $DB->delete_records_select(
+                    'mylkpd_presence',
                     'userid = ? AND submissionid IN (SELECT id FROM {mylkpd_submissions} WHERE mylkpdid = ?)',
-                    [$userid, $cm->instance]);
+                    [$userid, $cm->instance]
+                );
                 $own = $DB->get_records('mylkpd_submissions', ['mylkpdid' => $cm->instance, 'userid' => $userid,
                     'groupid' => 0], '', 'id');
                 foreach ($own as $sub) {
@@ -211,14 +219,22 @@ class provider implements
         if ($cm = get_coursemodule_from_id('mylkpd', $context->instanceid)) {
             [$insql, $params] = $DB->get_in_or_equal($userlist->get_userids(), SQL_PARAMS_NAMED);
             $params['mylkpdid'] = $cm->instance;
-            $own = $DB->get_records_select('mylkpd_submissions', "mylkpdid = :mylkpdid AND groupid = 0 AND userid $insql",
-                $params, '', 'id');
+            $own = $DB->get_records_select(
+                'mylkpd_submissions',
+                "mylkpdid = :mylkpdid AND groupid = 0 AND userid $insql",
+                $params,
+                '',
+                'id'
+            );
             foreach ($own as $sub) {
                 \core_grading\privacy\provider::delete_instance_data($context, (int) $sub->id);
                 get_file_storage()->delete_area_files($context->id, 'mod_mylkpd', 'answerimage', $sub->id);
             }
-            $DB->delete_records_select('mylkpd_submissions', "mylkpdid = :mylkpdid AND groupid = 0 AND userid $insql",
-                $params);
+            $DB->delete_records_select(
+                'mylkpd_submissions',
+                "mylkpdid = :mylkpdid AND groupid = 0 AND userid $insql",
+                $params
+            );
             $DB->delete_records_select('mylkpd_presence', "userid $insql AND submissionid IN
                 (SELECT id FROM {mylkpd_submissions} WHERE mylkpdid = :mylkpdid)", $params);
         }

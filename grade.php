@@ -175,8 +175,11 @@ if ($worksheet['ready']) {
     echo html_writer::start_div('mylkpd-actions mylkpd-teacheractions');
     echo html_writer::span('', 'mylkpd-savestate small', ['id' => 'mylkpd-savestate', 'role' => 'status',
         'aria-live' => 'polite']);
-    echo html_writer::tag('button', '&#128190; ' . get_string('saveannotations', 'mod_mylkpd'),
-        ['type' => 'button', 'class' => 'btn btn-secondary', 'data-mylkpd-action' => 'save']);
+    echo html_writer::tag(
+        'button',
+        '&#128190; ' . get_string('saveannotations', 'mod_mylkpd'),
+        ['type' => 'button', 'class' => 'btn btn-secondary', 'data-mylkpd-action' => 'save']
+    );
     echo html_writer::end_div();
 }
 // AI essay checking: suggestion only, the teacher decides what goes into the grade form.
@@ -186,19 +189,28 @@ if (mylkpd_ai_enabled($mylkpd)) {
     echo $OUTPUT->heading('&#10024; ' . get_string('aicheck', 'mod_mylkpd'), 4);
     $keysurl = new moodle_url('/mod/mylkpd/keys.php', ['id' => $cm->id]);
     if (!$aiquestions) {
-        echo html_writer::div(get_string('noanswerkeys', 'mod_mylkpd') . ' ' .
+        echo html_writer::div(
+            get_string('noanswerkeys', 'mod_mylkpd') . ' ' .
             html_writer::link($keysurl, get_string('answerkeys', 'mod_mylkpd'), ['class' => 'btn btn-sm btn-outline-primary']),
-            'small');
+            'small'
+        );
     } else {
         echo html_writer::div(
-            html_writer::tag('button', '&#10024; ' . get_string('aicheckbutton', 'mod_mylkpd'),
-                ['type' => 'button', 'class' => 'btn btn-secondary', 'data-mylkpd-ai' => 'check']) . ' ' .
+            html_writer::tag(
+                'button',
+                '&#10024; ' . get_string('aicheckbutton', 'mod_mylkpd'),
+                ['type' => 'button', 'class' => 'btn btn-secondary', 'data-mylkpd-ai' => 'check']
+            ) . ' ' .
             html_writer::span(get_string('aicheckinfo', 'mod_mylkpd', count($aiquestions)), 'small text-muted') . ' ' .
             html_writer::link($keysurl, get_string('answerkeys', 'mod_mylkpd'), ['class' => 'small']),
-            'mylkpd-ai-tools');
-        echo html_writer::tag('label', html_writer::empty_tag('input', ['type' => 'checkbox', 'checked' => 'checked',
+            'mylkpd-ai-tools'
+        );
+        echo html_writer::tag(
+            'label',
+            html_writer::empty_tag('input', ['type' => 'checkbox', 'checked' => 'checked',
             'data-mylkpd-ai' => 'marks', 'class' => 'form-check-input me-1 mr-1']) . get_string('aimarks', 'mod_mylkpd'),
-            ['class' => 'small d-block mb-2']);
+            ['class' => 'small d-block mb-2']
+        );
         echo html_writer::div('', 'mylkpd-ai-result', ['id' => 'mylkpd-ai-result', 'aria-live' => 'polite']);
         $areas = [];
         foreach ($aiquestions as $q) {
@@ -209,13 +221,18 @@ if (mylkpd_ai_enabled($mylkpd)) {
             $stored['timetext'] = userdate($stored['time'] ?? 0);
         }
         if (!empty($mylkpd->aiautotime)) {
-            echo html_writer::div('&#9201; ' . get_string(time() >= $mylkpd->aiautotime ? 'aiautoactive' : 'aiautoplanned',
-                'mod_mylkpd', userdate($mylkpd->aiautotime)), 'small text-muted mb-2');
+            echo html_writer::div('&#9201; ' . get_string(
+                time() >= $mylkpd->aiautotime ? 'aiautoactive' : 'aiautoplanned',
+                'mod_mylkpd',
+                userdate($mylkpd->aiautotime)
+            ), 'small text-muted mb-2');
         }
         $aistrings = [];
-        foreach (['colnumber', 'colanswer', 'colscore', 'colstatus', 'colfeedback', 'total', 'checkedat', 'apply', 'review',
+        foreach (
+            ['colnumber', 'colanswer', 'colscore', 'colstatus', 'colfeedback', 'total', 'checkedat', 'apply', 'review',
                 'checking', 'failed', 'missing', 'empty', 'number', 'replacefeedback', 'vright', 'vpartial', 'vwrong', 'vunknown',
-                'unchanged', 'outside', 'autodone', 'autoerror'] as $k) {
+                'unchanged', 'outside', 'autodone', 'autoerror'] as $k
+        ) {
             $aistrings[$k] = get_string('ai' . $k, 'mod_mylkpd');
         }
         echo $OUTPUT->render_from_template('mod_mylkpd/config_holder', ['id' => 'mylkpd-ai-config', 'config' => json_encode([
@@ -251,9 +268,11 @@ if ($rubricwarning) {
     echo $OUTPUT->notification($rubricwarning, \core\output\notification::NOTIFY_WARNING);
 }
 if (!$controller && $mylkpd->grade != 0 && has_capability('moodle/grade:managegradingforms', $context)) {
-    echo html_writer::div(get_string('rubricsetuphint', 'mod_mylkpd') . ' ' .
+    echo html_writer::div(
+        get_string('rubricsetuphint', 'mod_mylkpd') . ' ' .
         html_writer::link(mylkpd_grading_manage_url($context), get_string('rubricsetup', 'mod_mylkpd')),
-        'mylkpd-rubrichint small text-muted mb-2');
+        'mylkpd-rubrichint small text-muted mb-2'
+    );
 }
 $form->display();
 echo $OUTPUT->box_end();

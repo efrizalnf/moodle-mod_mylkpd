@@ -27,7 +27,6 @@
  * Defines what is written to mylkpd.xml.
  */
 class backup_mylkpd_activity_structure_step extends backup_activity_structure_step {
-
     /**
      * Activity settings, answer key questions and, with user data, submissions and their pictures.
      *
@@ -88,7 +87,12 @@ class backup_mylkpd_activity_structure_step extends backup_activity_structure_st
     protected function users_in_answers(): array {
         global $DB;
         $ids = [];
-        $rs = $DB->get_recordset('mylkpd_submissions', ['mylkpdid' => $this->task->get_activityid()], '', 'id, answers, submittedby');
+        $rs = $DB->get_recordset(
+            'mylkpd_submissions',
+            ['mylkpdid' => $this->task->get_activityid()],
+            '',
+            'id, answers, submittedby'
+        );
         foreach ($rs as $sub) {
             $data = json_decode((string) $sub->answers, true) ?: [];
             foreach (['items', 'blocks'] as $kind) {

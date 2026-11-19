@@ -38,16 +38,21 @@ echo $OUTPUT->heading(get_string('modulenameplural', 'mod_mylkpd'));
 
 $instances = get_all_instances_in_course('mylkpd', $course);
 if (!$instances) {
-    notice(get_string('thereareno', 'moodle', get_string('modulenameplural', 'mod_mylkpd')),
-        new moodle_url('/course/view.php', ['id' => $course->id]));
+    notice(
+        get_string('thereareno', 'moodle', get_string('modulenameplural', 'mod_mylkpd')),
+        new moodle_url('/course/view.php', ['id' => $course->id])
+    );
 }
 
 $table = new html_table();
 $table->head = [get_string('name')];
 foreach ($instances as $instance) {
     $attrs = $instance->visible ? [] : ['class' => 'dimmed'];
-    $table->data[] = [html_writer::link(new moodle_url('/mod/mylkpd/view.php', ['id' => $instance->coursemodule]),
-        format_string($instance->name), $attrs)];
+    $table->data[] = [html_writer::link(
+        new moodle_url('/mod/mylkpd/view.php', ['id' => $instance->coursemodule]),
+        format_string($instance->name),
+        $attrs
+    )];
 }
 echo html_writer::table($table);
 echo $OUTPUT->footer();

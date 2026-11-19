@@ -1,5 +1,18 @@
 <?php
 // This file is part of Moodle - https://moodle.org/
+//
+// Moodle is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Moodle is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with Moodle.  If not, see <https://www.gnu.org/licenses/>.
 
 /**
  * Answer key for AI essay checking: the teacher lists the essay questions with a model answer and
@@ -7,7 +20,7 @@
  *
  * @package    mod_mylkpd
  * @copyright  2026 Zalira
- * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
 require(__DIR__ . '/../../config.php');
@@ -87,8 +100,7 @@ foreach (['qlabel', 'qquestion', 'qkey', 'qpoints', 'qmax', 'qarea', 'qareanone'
         'qpickingquestion', 'qquestionarea', 'qquestionnone', 'qquestionpicked'] as $k) {
     $strings[$k] = get_string($k, 'mod_mylkpd');
 }
-$PAGE->requires->js(new moodle_url('/mod/mylkpd/js/keys.js'));
-$PAGE->requires->js_init_code('MyLKPDKeys.init(' . json_encode(['rows' => $rows, 'strings' => $strings]) . ');', true);
+$PAGE->requires->js_call_amd('mod_mylkpd/keys', 'init', ['mylkpd-keys-config']);
 
 echo $OUTPUT->header();
 echo $OUTPUT->heading(get_string('answerkeys', 'mod_mylkpd'), 3);
@@ -97,6 +109,8 @@ if (!mylkpd_ai_enabled($mylkpd)) {
     echo $OUTPUT->notification(get_string(\mod_mylkpd\ai\client::site_enabled() ? 'aiactivityoff' : 'aisiteoff', 'mod_mylkpd'),
         \core\output\notification::NOTIFY_WARNING);
 }
+echo $OUTPUT->render_from_template('mod_mylkpd/config_holder', ['id' => 'mylkpd-keys-config',
+    'config' => json_encode(['rows' => $rows, 'strings' => $strings], JSON_UNESCAPED_UNICODE)]);
 echo html_writer::div(get_string('answerkeys_help', 'mod_mylkpd'), 'mylkpd-keys-help small');
 
 echo html_writer::start_div('mylkpd-keys-layout');

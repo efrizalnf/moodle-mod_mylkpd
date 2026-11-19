@@ -1815,3 +1815,12 @@
     background: #cfe2ff;
     border-radius: 1rem;
 }
+
+.path-mod-mylkpd .mylkpd-feedback-text {
+    white-space: pre-line;
+}
+
+.path-mod-mylkpd .mylkpd-schedule-item + .mylkpd-schedule-item::before {
+    content: " · ";
+    color: #6c757d;
+}

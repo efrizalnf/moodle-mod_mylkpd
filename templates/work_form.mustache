@@ -1,0 +1,49 @@
+{{!
+    This file is part of Moodle - https://moodle.org/
+
+    Moodle is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Moodle is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with Moodle.  If not, see <https://www.gnu.org/licenses/>.
+}}
+{{!
+    @template mod_mylkpd/work_form
+
+    The worksheet a student is working on, with Save and Submit (or take back a group submission).
+
+    Context variables required for this template:
+    * action - form URL
+    * sesskey
+    * worksheet - worksheet HTML (mod_mylkpd/worksheet)
+    * savelabel, submitlabel - button labels
+    * confirmed - whether this member already submitted (group work where every member must submit)
+    * confirmedlabel, unconfirmlabel - texts for that case
+
+    Example context (json):
+    {"action": "/mod/mylkpd/view.php?id=1", "sesskey": "abc", "worksheet": "<div id=\"mylkpd-container\"></div>",
+     "savelabel": "Save now", "submitlabel": "Submit", "confirmed": false, "confirmedlabel": "", "unconfirmlabel": ""}
+}}
+<form method="post" action="{{action}}" id="mylkpd-form">
+    <input type="hidden" name="sesskey" value="{{sesskey}}">
+    <input type="hidden" name="submitfinal" value="0" id="mylkpd-submitfinal">
+    {{{worksheet}}}
+    <div class="mylkpd-actions">
+        <span class="mylkpd-savestate small" id="mylkpd-savestate" role="status" aria-live="polite"></span>
+        <button type="button" class="btn btn-secondary" data-mylkpd-action="save">&#128190; {{savelabel}}</button>
+        {{#confirmed}}
+        <span class="mylkpd-confirmed small">&#10003; {{confirmedlabel}}</span>
+        <button type="submit" name="unconfirm" value="1" class="btn btn-outline-secondary">{{unconfirmlabel}}</button>
+        {{/confirmed}}
+        {{^confirmed}}
+        <button type="button" class="btn btn-primary" data-mylkpd-action="submit">&#10148; {{submitlabel}}</button>
+        {{/confirmed}}
+    </div>
+</form>

@@ -1,0 +1,34 @@
+{{!
+    This file is part of Moodle - https://moodle.org/
+
+    Moodle is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Moodle is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with Moodle.  If not, see <https://www.gnu.org/licenses/>.
+}}
+{{!
+    @template mod_mylkpd/toolbar_button
+
+    One toolbar button.
+
+    Context variables required for this template:
+    * attr - data attribute name (data-mylkpd-<attr>)
+    * value - attribute value
+    * icon - icon HTML (built by the plugin)
+    * label - accessible label and tooltip
+    * showlabel - whether the label is shown next to the icon
+    * active - whether the button is pressed
+    * istool - whether it is a tool (has aria-pressed)
+
+    Example context (json):
+    {"attr": "tool", "value": "pen", "icon": "&#9998;", "label": "Pencil", "showlabel": true, "active": false, "istool": true}
+}}
+<button type="button" class="btn btn-sm {{#active}}btn-primary{{/active}}{{^active}}btn-outline-secondary{{/active}}" data-mylkpd-{{attr}}="{{value}}" title="{{label}}" aria-label="{{label}}"{{#istool}} aria-pressed="{{#active}}true{{/active}}{{^active}}false{{/active}}"{{/istool}}><span class="mylkpd-icon" aria-hidden="true">{{{icon}}}</span>{{#showlabel}}<span class="mylkpd-tool-label">{{label}}</span>{{/showlabel}}</button>

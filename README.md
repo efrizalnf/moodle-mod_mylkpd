@@ -2,7 +2,7 @@
 
 [![Moodle Plugin CI](https://github.com/efrizalnf/moodle-mod_mylkpd/actions/workflows/ci.yml/badge.svg)](https://github.com/efrizalnf/moodle-mod_mylkpd/actions/workflows/ci.yml)
 
-Versi 1.4.2 (stable) · Moodle 4.2 – 5.0 · dibuat oleh **Zalira** · [English below](#english)
+Versi 1.4.3 (stable) · Moodle 4.2 – 5.0 · dibuat oleh **Zalira** · [English below](#english)
 
 Plugin aktivitas Moodle (4.2+). Guru cukup mengunggah LKPD (PDF atau Word), siswa mengerjakan
 langsung di atas halaman LKPD, lalu guru menilai dari Moodle. Nilai otomatis masuk Gradebook.
@@ -59,6 +59,13 @@ anotasi kapan saja.
   menampilkan "70 / 100 (nilai 80 − 10 potongan terlambat)".
 - Siswa yang membuka LKPD setelah batas waktu mendapat peringatan sebelum mengumpulkan.
 - Tidak berlaku untuk nilai skala.
+
+## Tanpa koneksi internet
+Jika koneksi putus saat mengerjakan, siswa tetap bisa melanjutkan: muncul pemberitahuan di halaman, jawaban
+disimpan di perangkat (localStorage browser, per aktivitas dan per pengguna) dan dikirim otomatis begitu
+koneksi kembali, juga jika tab sempat ditutup lalu dibuka lagi. Salinan di perangkat dihapus setelah server
+menerimanya. Tombol **Kumpulkan** ditahan selama offline (termasuk Wi-Fi tanpa internet) dengan pesan yang
+jelas; menambah gambar juga butuh koneksi.
 
 ## Gambar dari siswa
 Tombol **🖼 Gambar** (baris Sisipkan) untuk menambahkan foto/gambar ke LKPD, misalnya foto hasil praktikum.
@@ -240,7 +247,8 @@ rilis dengan nomor `release` yang sama, agar Moodle menjalankan upgrade.
 
 | Versi | `$plugin->version` | Perubahan utama |
 |---|---|---|
-| **1.4.2** | 2026112200 | Rilis **stable** pertama: maturity `MATURITY_STABLE`, versi Moodle yang didukung dinyatakan (`supported` 4.2 – 5.0), CI ditambah Moodle 4.2. Semua issue review Moodle Plugins Directory selesai kecuali #11 (dilakukan di moodle.org setelah disetujui). |
+| **1.4.3** | 2026112300 | Perbaikan: **mengumpulkan saat tidak ada internet**. Sebelumnya tombol Kumpulkan diam saja (pesan galat butuh server) dan jawaban yang belum tersimpan bisa hilang jika tab ditutup. Sekarang: pemberitahuan offline di halaman, Kumpulkan ditahan dengan pesan jelas, jawaban disimpan di perangkat dan dikirim otomatis saat koneksi kembali (juga setelah tab dibuka lagi), deteksi Wi-Fi tanpa internet. |
+| 1.4.2 | 2026112200 | Rilis **stable** pertama: maturity `MATURITY_STABLE`, versi Moodle yang didukung dinyatakan (`supported` 4.2 – 5.0), CI ditambah Moodle 4.2. Semua issue review Moodle Plugins Directory selesai kecuali #11 (dilakukan di moodle.org setelah disetujui). |
 | 1.4.1 | 2026112100 | Lolos semua pemeriksaan **moodle-plugin-ci**: gaya kode PHP (phpcs standar moodle, 391 temuan diperbaiki), PHPDoc lengkap, contoh konteks template, stylelint CSS tanpa `!important`, dan build AMD terbaru. |
 | 1.4.0 | 2026112000 | **Backup/Restore** (aktivitas bisa diimpor, diduplikat, dan dipakai ulang di kursus lain, termasuk jawaban, rubrik terisi, dan kalender); AJAX diganti **External Services**; JavaScript menjadi **modul AMD ES6** (lolos ESLint Moodle tanpa peringatan); tampilan memakai **template Mustache**; dialog konfirmasi Moodle; file **LICENSE**; header GPL lengkap; **GitHub Actions** (moodle-plugin-ci); README berbahasa Inggris. Syarat minimum naik ke **Moodle 4.2**. |
 | 1.3.3 | 2026111900 | **Tabel** di editor (pemilih ukuran, isi sel, + / − baris & kolom, gaya/ketebalan/warna garis, warna baris judul & sel) dengan mini-toolbar yang muncul di atas tabel; **pemeriksaan AI terjadwal** yang menyimpan nilai otomatis (tidak menimpa nilai guru); **Pilih soal** di Kunci jawaban (teks soal tersalin otomatis, juga dari PDF); potongan terlambat per hari menjadi **checkbox** (tidak dicentang = sekali); **halaman kosong** dan ruang kosong di akhir dokumen tidak lagi ditampilkan. |

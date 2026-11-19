@@ -1833,3 +1833,44 @@
     content: " · ";
     color: #6c757d;
 }
+
+/* Messages shown in the page (they work without a connection, unlike dialogs). */
+.path-mod-mylkpd .mylkpd-notice {
+    flex-basis: 100%;
+    padding: .45rem .7rem;
+    font-size: .875rem;
+    border-radius: .35rem;
+}
+
+.path-mod-mylkpd .mylkpd-notice[hidden] {
+    display: none;
+}
+
+.path-mod-mylkpd .mylkpd-notice-warning {
+    color: #664d03;
+    background: #fff3cd;
+    border: 1px solid #ffe69c;
+}
+
+.path-mod-mylkpd .mylkpd-notice-info {
+    color: #055160;
+    background: #cff4fc;
+    border: 1px solid #9eeaf9;
+}
+
+.path-mod-mylkpd .mylkpd-notice-success {
+    color: #0f5132;
+    background: #d1e7dd;
+    border: 1px solid #a3cfbb;
+}
+
+.path-mod-mylkpd .mylkpd-notice-danger {
+    color: #842029;
+    background: #f8d7da;
+    border: 1px solid #f1aeb5;
+}
+
+.path-mod-mylkpd .mylkpd-state-offlinestate {
+    color: #997404;
+    font-weight: 600;
+}

@@ -1047,6 +1047,55 @@ function mylkpd_display_final_grade(stdClass $mylkpd, ?stdClass $submission): st
 }
 
 /**
+ * Filters of the submissions page, in display order.
+ *
+ * @return string[]
+ */
+function mylkpd_submission_filters(): array {
+    return ['all', 'notsubmitted', 'submitted', 'notgraded', 'graded'];
+}
+
+/**
+ * Whether a student's (or group's) work matches a filter of the submissions page.
+ *
+ * "Not submitted" includes work never started and drafts; "not graded" is submitted work without a grade.
+ *
+ * @param stdClass|null $submission
+ * @param string $filter one of mylkpd_submission_filters()
+ * @return bool
+ */
+function mylkpd_submission_matches(?stdClass $submission, string $filter): bool {
+    $submitted = $submission && (int) $submission->status === MYLKPD_STATUS_SUBMITTED;
+    $graded = $submission && $submission->grade !== null && $submission->grade !== '';
+    switch ($filter) {
+        case 'notsubmitted':
+            return !$submitted;
+        case 'submitted':
+            return $submitted;
+        case 'notgraded':
+            return $submitted && !$graded;
+        case 'graded':
+            return $graded;
+        default:
+            return true;
+    }
+}
+
+/**
+ * Number of rows matching each filter.
+ *
+ * @param array $rows list of [student or group, submission or null]
+ * @return int[] keyed by filter
+ */
+function mylkpd_filter_counts(array $rows): array {
+    $counts = [];
+    foreach (mylkpd_submission_filters() as $key) {
+        $counts[$key] = count(array_filter($rows, fn($row) => mylkpd_submission_matches($row[1], $key)));
+    }
+    return $counts;
+}
+
+/**
  * Group work where every member must submit: who has submitted (userid => time).
  *
  * @param stdClass|null $submission

@@ -1874,3 +1874,15 @@
     color: #997404;
     font-weight: 600;
 }
+
+/* Filter of the submissions page */
+.path-mod-mylkpd .mylkpd-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .5rem;
+}
+
+.path-mod-mylkpd .mylkpd-filters .nav-link {
+    padding: .3rem .7rem;
+}

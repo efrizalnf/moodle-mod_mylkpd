@@ -81,10 +81,16 @@ if ($controller) {
 }
 $memberids = mylkpd_member_ids($mylkpd, $groupid, $userid);
 
+$filter = optional_param('filter', '', PARAM_ALPHA);
+if (in_array($filter, mylkpd_submission_filters(), true) && $filter !== 'all') {
+    // Back to the same filtered list after grading.
+    $urlparams['filter'] = $filter;
+}
 $PAGE->set_url('/mod/mylkpd/grade.php', $urlparams);
 $PAGE->set_title(format_string($mylkpd->name) . ': ' . $title);
 $PAGE->set_heading(format_string($course->fullname));
-$returnurl = new moodle_url('/mod/mylkpd/submissions.php', ['id' => $cm->id]);
+$returnurl = new moodle_url('/mod/mylkpd/submissions.php', ['id' => $cm->id] + (isset($urlparams['filter']) ?
+    ['filter' => $urlparams['filter']] : []));
 $PAGE->navbar->add(get_string('submissions', 'mod_mylkpd'), $returnurl);
 $PAGE->navbar->add($title);
 

@@ -176,7 +176,9 @@ if ($cansubmit && !$nogroup) {
     } else if ($issubmitted) {
         $badges[] = ['text' => get_string('statussubmitted', 'mod_mylkpd'), 'class' => 'bg-success badge-success'];
         $when = $submission->timesubmitted ?: $submission->timemodified;
-        $a = (object) ['time' => userdate($when), 'name' => fullname(core_user::get_user($submission->userid))];
+        // The member who submitted can have been removed by a privacy request (userid 0).
+        $submitter = $submission->userid ? core_user::get_user($submission->userid) : false;
+        $a = (object) ['time' => userdate($when), 'name' => $submitter ? fullname($submitter) : get_string('unknownuser')];
         $info = get_string($team ? 'groupsubmittedinfo' : 'submittedinfo', 'mod_mylkpd', $team ? $a : $a->time);
         if ($late) {
             $badges[] = ['text' => get_string('statuslate', 'mod_mylkpd', format_time($late)), 'class' => 'bg-danger badge-danger'];

@@ -33,7 +33,12 @@ require_login($course, false, $cm);
 $context = context_module::instance($cm->id);
 require_capability('mod/mylkpd:grade', $context);
 
-$PAGE->set_url('/mod/mylkpd/submissions.php', ['id' => $cm->id]);
+$filter = optional_param('filter', 'all', PARAM_ALPHA);
+if (!in_array($filter, mylkpd_submission_filters(), true)) {
+    $filter = 'all';
+}
+$urlparams = ['id' => $cm->id] + ($filter === 'all' ? [] : ['filter' => $filter]);
+$PAGE->set_url('/mod/mylkpd/submissions.php', $urlparams);
 $PAGE->set_title(format_string($mylkpd->name) . ': ' . get_string('submissions', 'mod_mylkpd'));
 $PAGE->set_heading(format_string($course->fullname));
 $PAGE->navbar->add(get_string('submissions', 'mod_mylkpd'));
@@ -107,6 +112,7 @@ if ($mylkpd->grade != 0 && has_capability('moodle/grade:managegradingforms', $co
     );
 }
 
+$counts = [];
 $table = new html_table();
 $table->attributes['class'] = 'generaltable table-hover';
 $fmt = get_string('strftimedatetimeshort', 'langconfig');
@@ -124,8 +130,15 @@ if ($mylkpd->teamsubmission) {
         $aion ? [get_string('aiscore', 'mod_mylkpd')] : [],
         [get_string('grade', 'grades'), '']
     );
+    $rows = [];
     foreach ($groups as $group) {
-        $sub = $bygroup[$group->id] ?? null;
+        $rows[] = [$group, $bygroup[$group->id] ?? null];
+    }
+    $counts = mylkpd_filter_counts($rows);
+    foreach ($rows as [$group, $sub]) {
+        if (!mylkpd_submission_matches($sub, $filter)) {
+            continue;
+        }
         $members = mylkpd_members(mylkpd_member_ids($mylkpd, $group->id, 0));
         $table->data[] = array_merge([
             format_string($group->name),
@@ -135,7 +148,7 @@ if ($mylkpd->teamsubmission) {
         ], $aion ? [$aicell($mylkpd, $sub, ['targetuser' => 0, 'targetgroup' => $group->id])] : [], [
             s(mylkpd_display_final_grade($mylkpd, $sub)),
             html_writer::link(
-                new moodle_url('/mod/mylkpd/grade.php', ['id' => $cm->id, 'groupid' => $group->id]),
+                new moodle_url('/mod/mylkpd/grade.php', ['groupid' => $group->id] + $urlparams),
                 get_string('gradeaction', 'mod_mylkpd'),
                 ['class' => 'btn btn-sm btn-outline-primary']
             ),
@@ -159,8 +172,15 @@ if ($mylkpd->teamsubmission) {
         $aion ? [get_string('aiscore', 'mod_mylkpd')] : [],
         [get_string('grade', 'grades'), '']
     );
+    $rows = [];
     foreach ($students as $student) {
-        $sub = $subs[$student->id] ?? null;
+        $rows[] = [$student, $subs[$student->id] ?? null];
+    }
+    $counts = mylkpd_filter_counts($rows);
+    foreach ($rows as [$student, $sub]) {
+        if (!mylkpd_submission_matches($sub, $filter)) {
+            continue;
+        }
         $table->data[] = array_merge([
             fullname($student),
             mylkpd_status_badge($sub, $mylkpd, $context),
@@ -168,7 +188,7 @@ if ($mylkpd->teamsubmission) {
         ], $aion ? [$aicell($mylkpd, $sub, ['targetuser' => $student->id, 'targetgroup' => 0])] : [], [
             s(mylkpd_display_final_grade($mylkpd, $sub)),
             html_writer::link(
-                new moodle_url('/mod/mylkpd/grade.php', ['id' => $cm->id, 'userid' => $student->id]),
+                new moodle_url('/mod/mylkpd/grade.php', ['userid' => $student->id] + $urlparams),
                 get_string('gradeaction', 'mod_mylkpd'),
                 ['class' => 'btn btn-sm btn-outline-primary']
             ),
@@ -179,7 +199,27 @@ if ($mylkpd->teamsubmission) {
     }
 }
 
+if (!empty($counts['all'])) {
+    // How many students (or groups) are in each state; each filter is a link.
+    $items = [];
+    foreach (mylkpd_submission_filters() as $key) {
+        $url = new moodle_url('/mod/mylkpd/submissions.php', ['id' => $cm->id] + ($key === 'all' ? [] : ['filter' => $key]));
+        $items[] = [
+            'label' => get_string('filter' . $key, 'mod_mylkpd'),
+            'title' => get_string('filter' . $key . '_desc', 'mod_mylkpd'),
+            'count' => $counts[$key],
+            'url' => $url->out(false),
+            'active' => $key === $filter,
+        ];
+    }
+    echo $OUTPUT->render_from_template('mod_mylkpd/submission_filters', [
+        'label' => get_string('filterlabel', 'mod_mylkpd'),
+        'items' => $items,
+    ]);
+}
 if (!empty($table->data)) {
     echo html_writer::table($table);
+} else if (!empty($counts['all'])) {
+    echo $OUTPUT->notification(get_string('filternoresults', 'mod_mylkpd'), \core\output\notification::NOTIFY_INFO);
 }
 echo $OUTPUT->footer();
